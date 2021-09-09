@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.inject.Inject;
 import javax.inject.Named;
@@ -51,6 +52,7 @@ import org.eclipse.aether.RepositoryListener;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.RequestTrace;
+import org.eclipse.aether.SessionData;
 import org.eclipse.aether.metadata.DefaultMetadata;
 import org.eclipse.aether.repository.ArtifactRepository;
 import org.eclipse.aether.repository.RemoteRepository;
@@ -75,6 +77,8 @@ public class DefaultPluginVersionResolver
 
     private static final String REPOSITORY_CONTEXT = "plugin";
 
+    private static final Object CACHE_KEY = new Object();
+
     @Inject
     private Logger logger;
 
@@ -90,22 +94,35 @@ public class DefaultPluginVersionResolver
     public PluginVersionResult resolve( PluginVersionRequest request )
         throws PluginVersionResolutionException
     {
-        PluginVersionResult result = resolveFromProject( request );
+        Map<String, PluginVersionResult> cache = getCache( request.getRepositorySession().getData() );
+        String key = getKey( request );
+
+        PluginVersionResult result = cache.get( key );
 
         if ( result == null )
         {
-            result = resolveFromRepository( request );
+            result = resolveFromProject( request );
 
-            if ( logger.isDebugEnabled() )
+            if ( result == null )
+            {
+                result = resolveFromRepository( request );
+
+                if ( logger.isDebugEnabled() )
+                {
+                    logger.debug( "Resolved plugin version for " + request.getGroupId() + ":" + request.getArtifactId()
+                        + " to " + result.getVersion() + " from repository " + result.getRepository() );
+                }
+            }
+            else if ( logger.isDebugEnabled() )
             {
                 logger.debug( "Resolved plugin version for " + request.getGroupId() + ":" + request.getArtifactId()
-                    + " to " + result.getVersion() + " from repository " + result.getRepository() );
+                    + " to " + result.getVersion() + " from POM " + request.getPom() );
             }
         }
         else if ( logger.isDebugEnabled() )
         {
-            logger.debug( "Resolved plugin version for " + request.getGroupId() + ":" + request.getArtifactId() + " to "
-                + result.getVersion() + " from POM " + request.getPom() );
+            logger.debug( "Reusing cached resolved plugin version for " + request.getGroupId() + ":"
+                    + request.getArtifactId() + " to " + result.getVersion() + " from POM " + request.getPom() );
         }
 
         return result;
@@ -385,6 +402,36 @@ public class DefaultPluginVersionResolver
             }
         }
         return null;
+    }
+
+    @SuppressWarnings( "unchecked" )
+    private Map<String, PluginVersionResult> getCache( SessionData data )
+    {
+        Map<String, PluginVersionResult> cache = ( Map<String, PluginVersionResult> ) data.get( CACHE_KEY );
+        while ( cache == null )
+        {
+            cache = new ConcurrentHashMap<>( 256 );
+            if ( data.set( CACHE_KEY, null, cache ) )
+            {
+                break;
+            }
+            cache = ( Map<String, PluginVersionResult> ) data.get( CACHE_KEY );
+        }
+        return cache;
+    }
+
+    private static String getKey( PluginVersionRequest request )
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.append( request.getGroupId() );
+        sb.append( ':' );
+        sb.append( request.getArtifactId() );
+        for ( RemoteRepository repository : request.getRepositories() )
+        {
+            sb.append( ':' );
+            sb.append( repository.getId() );
+        }
+        return sb.toString();
     }
 
     static class Versions
