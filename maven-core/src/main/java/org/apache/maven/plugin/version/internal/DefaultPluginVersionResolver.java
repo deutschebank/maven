@@ -97,11 +97,11 @@ public class DefaultPluginVersionResolver
         Map<String, PluginVersionResult> cache = getCache( request.getRepositorySession().getData() );
         String key = getKey( request );
 
-        PluginVersionResult result = cache.get( key );
+        PluginVersionResult result = resolveFromProject( request );
 
         if ( result == null )
         {
-            result = resolveFromProject( request );
+            result = cache.get( key );
 
             if ( result == null )
             {
@@ -112,17 +112,19 @@ public class DefaultPluginVersionResolver
                     logger.debug( "Resolved plugin version for " + request.getGroupId() + ":" + request.getArtifactId()
                         + " to " + result.getVersion() + " from repository " + result.getRepository() );
                 }
+
+                cache.putIfAbsent( key, result );
             }
             else if ( logger.isDebugEnabled() )
             {
-                logger.debug( "Resolved plugin version for " + request.getGroupId() + ":" + request.getArtifactId()
-                    + " to " + result.getVersion() + " from POM " + request.getPom() );
+                logger.debug( "Reusing cached resolved plugin version for " + request.getGroupId() + ":"
+                        + request.getArtifactId() + " to " + result.getVersion() + " from POM " + request.getPom() );
             }
         }
         else if ( logger.isDebugEnabled() )
         {
-            logger.debug( "Reusing cached resolved plugin version for " + request.getGroupId() + ":"
-                    + request.getArtifactId() + " to " + result.getVersion() + " from POM " + request.getPom() );
+            logger.debug( "Resolved plugin version for " + request.getGroupId() + ":" + request.getArtifactId()
+                    + " to " + result.getVersion() + " from POM " + request.getPom() );
         }
 
         return result;
