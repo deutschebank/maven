@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import javax.inject.Inject;
 import javax.inject.Named;
@@ -94,13 +95,13 @@ public class DefaultPluginVersionResolver
     public PluginVersionResult resolve( PluginVersionRequest request )
         throws PluginVersionResolutionException
     {
-        Map<String, PluginVersionResult> cache = getCache( request.getRepositorySession().getData() );
-        String key = getKey( request );
+        ConcurrentMap<String, PluginVersionResult> cache = getCache( request.getRepositorySession().getData() );
 
         PluginVersionResult result = resolveFromProject( request );
 
         if ( result == null )
         {
+            String key = getKey( request );
             result = cache.get( key );
 
             if ( result == null )
@@ -407,9 +408,10 @@ public class DefaultPluginVersionResolver
     }
 
     @SuppressWarnings( "unchecked" )
-    private Map<String, PluginVersionResult> getCache( SessionData data )
+    private ConcurrentMap<String, PluginVersionResult> getCache(SessionData data )
     {
-        Map<String, PluginVersionResult> cache = ( Map<String, PluginVersionResult> ) data.get( CACHE_KEY );
+        ConcurrentMap<String, PluginVersionResult> cache =
+                ( ConcurrentMap<String, PluginVersionResult> ) data.get( CACHE_KEY );
         while ( cache == null )
         {
             cache = new ConcurrentHashMap<>( 256 );
@@ -417,7 +419,7 @@ public class DefaultPluginVersionResolver
             {
                 break;
             }
-            cache = ( Map<String, PluginVersionResult> ) data.get( CACHE_KEY );
+            cache = ( ConcurrentMap<String, PluginVersionResult> ) data.get( CACHE_KEY );
         }
         return cache;
     }
