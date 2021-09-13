@@ -408,7 +408,7 @@ public class DefaultPluginVersionResolver
     }
 
     @SuppressWarnings( "unchecked" )
-    private ConcurrentMap<String, PluginVersionResult> getCache(SessionData data )
+    private ConcurrentMap<String, PluginVersionResult> getCache( SessionData data )
     {
         ConcurrentMap<String, PluginVersionResult> cache =
                 ( ConcurrentMap<String, PluginVersionResult> ) data.get( CACHE_KEY );
