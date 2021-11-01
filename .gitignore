@@ -4,6 +4,7 @@ target/
 .settings/
 .svn/
 bin/
+.cache/
 # Intellij
 *.ipr
 *.iml
