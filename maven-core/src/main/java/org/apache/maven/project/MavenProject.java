@@ -232,11 +232,6 @@ public class MavenProject
         return model;
     }
 
-    public Model getOriginalEffectiveModel()
-    {
-        return originalEffectiveModel;
-    }
-
     /**
      * Returns the project corresponding to a declared parent.
      *
@@ -1205,11 +1200,6 @@ public class MavenProject
         this.model = model;
     }
 
-    public void setOriginalEffectiveModel( Model effectiveModel )
-    {
-        this.originalEffectiveModel = effectiveModel;
-    }
-
     protected void setAttachedArtifacts( List<Artifact> attachedArtifacts )
     {
         this.attachedArtifacts = attachedArtifacts;
@@ -1322,6 +1312,11 @@ public class MavenProject
         if ( project.getOriginalModel() != null )
         {
             setOriginalModel( project.getOriginalModel() );
+        }
+
+        if ( project.getEffectiveOriginalModel() != null )
+        {
+            setEffectiveOriginalModel( project.getEffectiveOriginalModel() );
         }
 
         setExecutionRoot( project.isExecutionRoot() );
@@ -1510,8 +1505,7 @@ public class MavenProject
     private Map<String, String> moduleAdjustments;
 
     @Deprecated // This appears only to be used in test code
-    public String getModulePathAdjustment( MavenProject moduleProject )
-        throws IOException
+    public String getModulePathAdjustment( MavenProject moduleProject ) throws IOException
     {
         // FIXME: This is hacky. What if module directory doesn't match artifactid, and parent
         // is coming from the repository??
@@ -1751,7 +1745,6 @@ public class MavenProject
 
     @Deprecated
     public List<String> getSystemClasspathElements()
-        throws DependencyResolutionRequiredException
     {
         List<String> list = new ArrayList<>( getArtifacts().size() );
 
@@ -1935,13 +1928,11 @@ public class MavenProject
                 }
             }
         }
-
         if ( dom != null )
         {
             // make a copy so the original in the POM doesn't get messed with
             dom = new Xpp3Dom( dom );
         }
-
         return dom;
     }
 

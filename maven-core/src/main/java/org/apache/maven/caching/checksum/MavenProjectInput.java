@@ -203,7 +203,7 @@ public class MavenProjectInput
     {
         long time = Clock.time();
 
-        final String effectivePom = getEffectivePom( project.getOriginalEffectiveModel() );
+        final String effectivePom = getEffectivePom( project.getEffectiveOriginalModel() );
         final SortedSet<Path> inputFiles = getInputFiles();
         final SortedMap<String, DigestItemType> dependenciesChecksum = getMutableDependencies();
 

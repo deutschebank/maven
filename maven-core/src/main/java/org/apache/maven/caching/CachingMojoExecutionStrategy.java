@@ -203,7 +203,6 @@ public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
             // cleanup partial state
             project.getArtifact().setFile( null );
             project.getArtifact().setResolved( false );
-            project.getAttachedArtifacts().clear();
             mojoListener.remove( project );
             // build as usual
             for ( MojoExecution mojoExecution : cachedSegment )
