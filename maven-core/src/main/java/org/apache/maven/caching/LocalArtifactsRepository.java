@@ -35,13 +35,13 @@ import java.nio.file.Path;
 public interface LocalArtifactsRepository extends ArtifactsRepository
 {
 
-    void beforeSave(CacheContext environment) throws IOException;
+    void beforeSave( CacheContext environment ) throws IOException;
 
-    Path getArtifactFile(CacheContext context, CacheSource source, ArtifactType artifact) throws IOException;
+    Path getArtifactFile( CacheContext context, CacheSource source, ArtifactType artifact ) throws IOException;
 
-    void clearCache(CacheContext context);
+    void clearCache( CacheContext context );
 
-    Optional<BuildInfo> findBestMatchingBuild(MavenSession session, Dependency dependency) throws IOException;
+    Optional<BuildInfo> findBestMatchingBuild( MavenSession session, Dependency dependency ) throws IOException;
 
-    BuildInfo findLocalBuild(CacheContext context) throws IOException;
+    BuildInfo findLocalBuild( CacheContext context ) throws IOException;
 }

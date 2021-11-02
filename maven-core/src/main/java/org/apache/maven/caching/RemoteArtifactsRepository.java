@@ -32,11 +32,11 @@ import java.io.IOException;
 public interface RemoteArtifactsRepository extends ArtifactsRepository
 {
 
-    byte[] getArtifactContent(CacheContext context, ArtifactType artifact) throws IOException;
+    byte[] getArtifactContent( CacheContext context, ArtifactType artifact ) throws IOException;
 
-    byte[] getResourceContent(String resourceUrl, String logReference);
+    byte[] getResourceContent( String resourceUrl, String logReference );
 
-    String getResourceUrl(CacheContext context, String filename);
+    String getResourceUrl( CacheContext context, String filename );
 
-    Optional<BuildInfo> findBaselineBuild(MavenProject project);
+    Optional<BuildInfo> findBaselineBuild( MavenProject project );
 }

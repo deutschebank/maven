@@ -21,7 +21,6 @@ package org.apache.maven.caching;
 
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.MojoExecutionEvent;
-import org.apache.maven.lifecycle.internal.ProjectIndex;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.project.MavenProject;
 
@@ -34,19 +33,18 @@ import java.util.Map;
 public interface CacheController
 {
 
-    CacheResult findCachedBuild(MavenSession session,
+    CacheResult findCachedBuild( MavenSession session,
                                 MavenProject project,
-                                ProjectIndex projectIndex,
-                                List<MojoExecution> mojoExecutions);
+                                List<MojoExecution> mojoExecutions );
 
-    boolean restoreProjectArtifacts(CacheResult cacheResult);
+    boolean restoreProjectArtifacts( CacheResult cacheResult );
 
-    void save(CacheResult cacheResult,
+    void save( CacheResult cacheResult,
               List<MojoExecution> mojoExecutions,
-              Map<String, MojoExecutionEvent> executionEvents);
+              Map<String, MojoExecutionEvent> executionEvents );
 
-    boolean isForcedExecution(MavenProject project, MojoExecution execution);
+    boolean isForcedExecution( MavenProject project, MojoExecution execution );
 
-    void saveCacheReport(MavenSession session);
+    void saveCacheReport( MavenSession session );
 
 }

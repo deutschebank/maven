@@ -92,7 +92,6 @@ import org.slf4j.LoggerFactory;
 public class MavenProject
     implements Cloneable
 {
-
     private static final Logger LOGGER = LoggerFactory.getLogger( MavenProject.class );
 
     public static final String EMPTY_PROJECT_GROUP_ID = "unknown";
@@ -156,6 +155,8 @@ public class MavenProject
 
     private Model originalModel;
 
+    private Model originalEffectiveModel;
+
     private Map<String, Artifact> pluginArtifactMap;
 
     private Set<Artifact> reportArtifacts;
@@ -185,11 +186,9 @@ public class MavenProject
     public MavenProject()
     {
         Model model = new Model();
-
         model.setGroupId( EMPTY_PROJECT_GROUP_ID );
         model.setArtifactId( EMPTY_PROJECT_ARTIFACT_ID );
         model.setVersion( EMPTY_PROJECT_VERSION );
-
         setModel( model );
     }
 
@@ -231,6 +230,11 @@ public class MavenProject
     public Model getModel()
     {
         return model;
+    }
+
+    public Model getOriginalEffectiveModel()
+    {
+        return originalEffectiveModel;
     }
 
     /**
@@ -318,7 +322,6 @@ public class MavenProject
                 {
                     path = new File( getBasedir(), path ).getAbsolutePath();
                 }
-
                 if ( !paths.contains( path ) )
                 {
                     paths.add( path );
@@ -347,8 +350,7 @@ public class MavenProject
         return testCompileSourceRoots;
     }
 
-    public List<String> getCompileClasspathElements()
-        throws DependencyResolutionRequiredException
+    public List<String> getCompileClasspathElements() throws DependencyResolutionRequiredException
     {
         List<String> list = new ArrayList<>( getArtifacts().size() + 1 );
 
@@ -370,7 +372,6 @@ public class MavenProject
                 }
             }
         }
-
         return list;
     }
 
@@ -1192,6 +1193,11 @@ public class MavenProject
     public void setModel( Model model )
     {
         this.model = model;
+    }
+
+    public void setOriginalEffectiveModel( Model effectiveModel )
+    {
+        this.originalEffectiveModel = effectiveModel;
     }
 
     protected void setAttachedArtifacts( List<Artifact> attachedArtifacts )

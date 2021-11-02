@@ -50,7 +50,6 @@ import org.apache.maven.caching.xml.DtoUtils;
 import org.apache.maven.caching.xml.XmlService;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.MojoExecutionEvent;
-import org.apache.maven.lifecycle.internal.ProjectIndex;
 import org.apache.maven.plugin.MavenPluginManager;
 import org.apache.maven.plugin.Mojo;
 import org.apache.maven.plugin.MojoExecution;
@@ -147,7 +146,7 @@ public class CacheControllerImpl implements CacheController
 
     @Override
     @Nonnull
-    public CacheResult findCachedBuild( MavenSession session, MavenProject project, ProjectIndex projectIndex,
+    public CacheResult findCachedBuild( MavenSession session, MavenProject project,
                                         List<MojoExecution> mojoExecutions )
     {
 
@@ -159,7 +158,7 @@ public class CacheControllerImpl implements CacheController
 
         logInfo( project, "Attempting to restore project from build cache" );
 
-        ProjectsInputInfoType inputInfo = calculateInput( project, session, projectIndex );
+        ProjectsInputInfoType inputInfo = calculateInput( project, session );
 
         final CacheContext context = new CacheContext( project, inputInfo, session );
         // remote build first
@@ -384,12 +383,11 @@ public class CacheControllerImpl implements CacheController
         }
     }
 
-    private ProjectsInputInfoType calculateInput( MavenProject project, MavenSession session,
-                                                  ProjectIndex projectIndex )
+    private ProjectsInputInfoType calculateInput( MavenProject project, MavenSession session )
     {
         try
         {
-            final MavenProjectInput inputs = new MavenProjectInput( project, session, cacheConfig, projectIndex,
+            final MavenProjectInput inputs = new MavenProjectInput( project, session, cacheConfig,
                     artifactDigestByKey, repoSystem, artifactHandlerManager, logger, localCache, remoteCache );
             return inputs.calculateChecksum( cacheConfig.getHashFactory() );
         }

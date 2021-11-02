@@ -30,12 +30,12 @@ public interface PluginScanConfig
 {
     boolean isSkip();
 
-    boolean accept(String propertyName);
+    boolean accept( String propertyName );
 
-    PluginScanConfig mergeWith(PluginScanConfig overrideSource);
+    PluginScanConfig mergeWith( PluginScanConfig overrideSource );
 
     @Nonnull
-    ScanConfigProperties getTagScanProperties(String tagName);
+    ScanConfigProperties getTagScanProperties( String tagName );
 
     DirScanConfigType dto();
 }

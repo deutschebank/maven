@@ -32,9 +32,9 @@ public class Hash
      */
     public interface Algorithm
     {
-        byte[] hash(byte[] array);
+        byte[] hash( byte[] array );
 
-        byte[] hash(Path path) throws IOException;
+        byte[] hash( Path path ) throws IOException;
     }
 
     /**
@@ -42,7 +42,7 @@ public class Hash
      */
     public interface Checksum
     {
-        void update(byte[] hash);
+        void update( byte[] hash );
 
         byte[] digest();
     }
@@ -56,6 +56,6 @@ public class Hash
 
         Algorithm algorithm();
 
-        Checksum checksum(int count);
+        Checksum checksum( int count );
     }
 }

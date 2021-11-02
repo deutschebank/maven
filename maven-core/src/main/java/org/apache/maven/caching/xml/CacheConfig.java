@@ -41,21 +41,21 @@ import java.util.regex.Pattern;
 public interface CacheConfig
 {
 
-    CacheState initialize(MavenProject project, MavenSession session);
+    CacheState initialize( MavenProject project, MavenSession session );
 
     @Nonnull
-    List<TrackedPropertyType> getTrackedProperties(MojoExecution mojoExecution);
+    List<TrackedPropertyType> getTrackedProperties( MojoExecution mojoExecution );
 
-    boolean isLogAllProperties(MojoExecution mojoExecution);
-
-    @Nonnull
-    List<PropertyNameType> getLoggedProperties(MojoExecution mojoExecution);
+    boolean isLogAllProperties( MojoExecution mojoExecution );
 
     @Nonnull
-    List<PropertyNameType> getNologProperties(MojoExecution mojoExecution);
+    List<PropertyNameType> getLoggedProperties( MojoExecution mojoExecution );
 
     @Nonnull
-    List<String> getEffectivePomExcludeProperties(Plugin plugin);
+    List<PropertyNameType> getNologProperties( MojoExecution mojoExecution );
+
+    @Nonnull
+    List<String> getEffectivePomExcludeProperties( Plugin plugin );
 
     String isProcessPlugins();
 
@@ -68,10 +68,10 @@ public interface CacheConfig
     List<String> getGlobalExcludePaths();
 
     @Nonnull
-    PluginScanConfig getPluginDirScanConfig(Plugin plugin);
+    PluginScanConfig getPluginDirScanConfig( Plugin plugin );
 
     @Nonnull
-    PluginScanConfig getExecutionDirScanConfig(Plugin plugin, PluginExecution exec);
+    PluginScanConfig getExecutionDirScanConfig( Plugin plugin, PluginExecution exec );
 
     @Nonnull
     MultimoduleDiscoveryStrategy getMultimoduleDiscoveryStrategy();
@@ -79,7 +79,7 @@ public interface CacheConfig
     @Nonnull
     HashFactory getHashFactory();
 
-    boolean isForcedExecution(MojoExecution execution);
+    boolean isForcedExecution( MojoExecution execution );
 
     String getUrl();
 
@@ -97,7 +97,7 @@ public interface CacheConfig
 
     List<String> getAttachedOutputs();
 
-    boolean canIgnore(MojoExecution mojoExecution);
+    boolean canIgnore( MojoExecution mojoExecution );
 
     @Nonnull
     List<Pattern> getExcludePatterns();

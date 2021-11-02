@@ -1,5 +1,24 @@
 package org.apache.maven.caching;
 
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.maven.caching.jaxb.CompletedExecutionType;
 import org.apache.maven.caching.jaxb.TrackedPropertyType;
@@ -72,7 +91,7 @@ public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
             cacheState = cacheConfig.initialize( project, session );
             if ( cacheState == INITIALIZED )
             {
-                result = cacheController.findCachedBuild( session, project, null, mojoExecutions );
+                result = cacheController.findCachedBuild( session, project, mojoExecutions );
             }
         }
 
@@ -86,7 +105,8 @@ public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
         {
             for ( MojoExecution mojoExecution : mojoExecutions )
             {
-                if ( source == MojoExecution.Source.CLI || isLaterPhase( mojoExecution.getLifecyclePhase(), "post-clean" ) )
+                if ( source == MojoExecution.Source.CLI
+                        || isLaterPhase( mojoExecution.getLifecyclePhase(), "post-clean" ) )
                 {
                     executor.execute( mojoExecution );
                 }
@@ -107,7 +127,7 @@ public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
         }
     }
 
-    private MojoExecution.Source getSource(List<MojoExecution> mojoExecutions )
+    private MojoExecution.Source getSource( List<MojoExecution> mojoExecutions )
     {
         if ( mojoExecutions == null || mojoExecutions.isEmpty() )
         {
@@ -215,31 +235,37 @@ public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
                 final CompletedExecutionType completedExecution = buildInfo.findMojoExecutionInfo( cacheCandidate );
                 final String fullGoalName = cacheCandidate.getMojoDescriptor().getFullGoalName();
 
-                if ( completedExecution != null && !isParamsMatched( project, cacheCandidate, mojo, completedExecution ) )
+                if ( completedExecution != null
+                        && !isParamsMatched( project, cacheCandidate, mojo, completedExecution ) )
                 {
                     logInfo( project,
-                            "Mojo cached parameters mismatch with actual, forcing full project build. Mojo: " + fullGoalName );
+                            "Mojo cached parameters mismatch with actual, forcing full project build. Mojo: "
+                                    + fullGoalName );
                     consistent = false;
                 }
 
                 if ( consistent )
                 {
                     long elapsed = System.currentTimeMillis() - createdTimestamp;
-                    logInfo( project, "Skipping plugin execution (reconciled in " + elapsed + " millis): " + fullGoalName );
+                    logInfo( project, "Skipping plugin execution (reconciled in "
+                            + elapsed + " millis): " + fullGoalName );
                 }
 
                 if ( logger.isDebugEnabled() )
                 {
                     logger.debug(
-                            "[CACHE][" + project.getArtifactId() + "] Checked " + fullGoalName + ", resolved mojo: " + mojo
+                            "[CACHE][" + project.getArtifactId() + "] Checked "
+                                    + fullGoalName + ", resolved mojo: " + mojo
                                     + ", cached params:" + completedExecution );
                 }
-            } catch (PluginContainerException | PluginConfigurationException e) {
+            }
+            catch ( PluginContainerException | PluginConfigurationException e )
+            {
                 throw new LifecycleExecutionException( "Cannot get configured mojo", e );
             }
             finally
             {
-                if( mojo != null )
+                if ( mojo != null )
                 {
                     mavenPluginManager.releaseMojo( mojo, cacheCandidate );
                 }

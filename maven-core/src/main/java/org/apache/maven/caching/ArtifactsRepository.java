@@ -32,11 +32,11 @@ import java.io.IOException;
 public interface ArtifactsRepository
 {
 
-    BuildInfo findBuild(CacheContext context) throws IOException;
+    BuildInfo findBuild( CacheContext context ) throws IOException;
 
-    void saveBuildInfo(CacheResult cacheResult, BuildInfo buildInfo) throws IOException;
+    void saveBuildInfo( CacheResult cacheResult, BuildInfo buildInfo ) throws IOException;
 
-    void saveArtifactFile(CacheResult cacheResult, Artifact artifact) throws IOException;
+    void saveArtifactFile( CacheResult cacheResult, Artifact artifact ) throws IOException;
 
-    void saveCacheReport(String buildId, MavenSession session, CacheReportType cacheReport) throws IOException;
+    void saveCacheReport( String buildId, MavenSession session, CacheReportType cacheReport ) throws IOException;
 }

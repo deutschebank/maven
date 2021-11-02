@@ -104,7 +104,7 @@ public class CloseableBuffer implements AutoCloseable
     // Java 8: @FunctionalInterface
     private interface Cleaner
     {
-        boolean clean(ByteBuffer buffer);
+        boolean clean( ByteBuffer buffer );
     }
 
     private static class NoopCleaner implements Cleaner

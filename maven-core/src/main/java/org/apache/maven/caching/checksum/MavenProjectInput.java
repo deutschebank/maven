@@ -42,7 +42,7 @@ import org.apache.maven.caching.xml.BuildInfo;
 import org.apache.maven.caching.xml.CacheConfig;
 import org.apache.maven.caching.xml.DtoUtils;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.lifecycle.internal.ProjectIndex;
+import org.apache.maven.lifecycle.internal.builder.BuilderCommon;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
@@ -74,6 +74,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +93,6 @@ import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.replaceEachRepeatedly;
 import static org.apache.commons.lang3.StringUtils.startsWithAny;
 import static org.apache.commons.lang3.StringUtils.stripToEmpty;
-import static org.apache.maven.caching.ProjectUtils.isBuilding;
 import static org.apache.maven.caching.ProjectUtils.isSnapshot;
 import static org.apache.maven.caching.jaxb.PathSetType.Include;
 
@@ -145,13 +145,12 @@ public class MavenProjectInput
     private final Path baseDirPath;
     private final String dirGlob;
     private final boolean processPlugins;
-    private final ProjectIndex projectIndex;
+    private final Map<String, MavenProject> projectIndex;
 
     @SuppressWarnings( "checkstyle:parameternumber" )
     public MavenProjectInput( MavenProject project,
                               MavenSession session,
                               CacheConfig config,
-                              ProjectIndex projectIndex,
                               ConcurrentMap<String, DigestItemType> artifactsByKey,
                               RepositorySystem repoSystem,
                               ArtifactHandlerManager artifactHandlerManager,
@@ -162,7 +161,11 @@ public class MavenProjectInput
         this.project = project;
         this.session = session;
         this.config = config;
-        this.projectIndex = projectIndex;
+        this.projectIndex = new HashMap<>( session.getProjects().size() * 2 );
+        for ( MavenProject p : session.getProjects() )
+        {
+            projectIndex.put( BuilderCommon.getKey( p ), p );
+        }
         this.projectArtifactsByKey = artifactsByKey;
         this.baseDirPath = project.getBasedir().toPath().toAbsolutePath();
         this.repoSystem = repoSystem;
@@ -764,7 +767,7 @@ public class MavenProjectInput
         for ( Dependency dependency : project.getDependencies() )
         {
             // saved to index by the end of dependency build
-            final boolean currentlyBuilding = isBuilding( dependency, projectIndex );
+            final boolean currentlyBuilding = isBuilding( dependency );
             final boolean partOfMultiModule = strategy.isPartOfMultiModule( dependency );
             if ( !currentlyBuilding && !partOfMultiModule && !isSnapshot( dependency.getVersion() ) )
             {
@@ -819,6 +822,15 @@ public class MavenProjectInput
             result.put( artifactKey, resolved );
         }
         return result;
+    }
+
+    private boolean isBuilding( Dependency dependency )
+    {
+        final MavenProject key = new MavenProject();
+        key.setGroupId( dependency.getGroupId() );
+        key.setArtifactId( dependency.getArtifactId() );
+        key.setVersion( dependency.getVersion() );
+        return projectIndex.containsKey( BuilderCommon.getKey( key ) );
     }
 
     @Nonnull

@@ -27,7 +27,7 @@ import org.apache.maven.model.Dependency;
  */
 public interface MultimoduleDiscoveryStrategy
 {
-    boolean isPartOfMultiModule(Dependency dependency);
+    boolean isPartOfMultiModule( Dependency dependency );
 
-    boolean isLookupRemoteMavenRepo(Artifact dependency);
+    boolean isLookupRemoteMavenRepo( Artifact dependency );
 }
