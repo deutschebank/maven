@@ -37,6 +37,7 @@ import org.apache.maven.plugin.MojoExecutionStrategy;
 import org.apache.maven.plugin.PluginConfigurationException;
 import org.apache.maven.plugin.PluginContainerException;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.util.ReflectionUtils;
@@ -54,6 +55,7 @@ import static org.apache.maven.caching.xml.CacheState.INITIALIZED;
 /**
  * CachingMojoExecutionStrategy
  */
+@Component( role = MojoExecutionStrategy.class )
 public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
 {
     @Requirement
