@@ -156,6 +156,8 @@ public class MavenProject
 
     private Model originalModel;
 
+    private Model originalEffectiveModel;
+
     private Map<String, Artifact> pluginArtifactMap;
 
     private Set<Artifact> reportArtifacts;
@@ -1043,9 +1045,19 @@ public class MavenProject
         this.originalModel = originalModel;
     }
 
+    public void setEffectiveOriginalModel( Model originalEffectiveModel )
+    {
+        this.originalEffectiveModel = originalEffectiveModel;
+    }
+
     public Model getOriginalModel()
     {
         return originalModel;
+    }
+
+    public Model getOriginalEffectiveModel()
+    {
+        return originalEffectiveModel;
     }
 
     public void setManagedVersionMap( Map<String, Artifact> map )

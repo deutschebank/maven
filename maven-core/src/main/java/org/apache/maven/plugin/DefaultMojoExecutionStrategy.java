@@ -27,7 +27,7 @@ import java.util.List;
 
 /**
  * Default mojo execution strategy.
- * Just iterates over mojoExecution lists and pass all of them to executor
+ * It just iterates over mojoExecutions list and pass all of them to executor
  */
 @Component( role = MojoExecutionStrategy.class )
 public class DefaultMojoExecutionStrategy implements MojoExecutionStrategy
