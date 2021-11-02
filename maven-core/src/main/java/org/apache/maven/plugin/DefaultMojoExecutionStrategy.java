@@ -21,7 +21,6 @@ package org.apache.maven.plugin;
 
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.lifecycle.LifecycleExecutionException;
-import org.codehaus.plexus.component.annotations.Component;
 
 import java.util.List;
 

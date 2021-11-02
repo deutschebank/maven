@@ -89,8 +89,7 @@ import org.slf4j.LoggerFactory;
  * directories but I hope to take care of this during the Maven 4.0 release (jvz).
  * </p>
  */
-public class MavenProject
-    implements Cloneable
+public class MavenProject implements Cloneable
 {
     private static final Logger LOGGER = LoggerFactory.getLogger( MavenProject.class );
 
