@@ -151,6 +151,7 @@ public class MavenProjectInput
     @SuppressWarnings( "checkstyle:parameternumber" )
     public MavenProjectInput( MavenProject project,
                               MavenSession session,
+                              Map<String, MavenProject> projectIndex,
                               CacheConfig config,
                               ConcurrentMap<String, DigestItemType> artifactsByKey,
                               RepositorySystem repoSystem,
@@ -162,11 +163,7 @@ public class MavenProjectInput
         this.project = project;
         this.session = session;
         this.config = config;
-        this.projectIndex = new HashMap<>( session.getProjects().size() * 2 );
-        for ( MavenProject p : session.getProjects() )
-        {
-            projectIndex.put( BuilderCommon.getKey( p ), p );
-        }
+        this.projectIndex = projectIndex;
         this.projectArtifactsByKey = artifactsByKey;
         this.baseDirPath = project.getBasedir().toPath().toAbsolutePath();
         this.repoSystem = repoSystem;
@@ -364,7 +361,7 @@ public class MavenProjectInput
         );
 
         PluginManagement pluginManagement = prototype.getBuild().getPluginManagement();
-        pluginManagement.setPlugins( normalizePlugins( prototype.getBuild().getPluginManagement().getPlugins() ) );
+        pluginManagement.setPlugins( normalizePlugins( pluginManagement.getPlugins() ) );
 
         List<Plugin> plugins = normalizePlugins( prototype.getBuild().getPlugins() );
 

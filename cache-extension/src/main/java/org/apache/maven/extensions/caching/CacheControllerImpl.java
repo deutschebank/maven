@@ -50,6 +50,7 @@ import org.apache.maven.extensions.caching.xml.DtoUtils;
 import org.apache.maven.extensions.caching.xml.XmlService;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.MojoExecutionEvent;
+import org.apache.maven.lifecycle.internal.builder.BuilderCommon;
 import org.apache.maven.plugin.MavenPluginManager;
 import org.apache.maven.plugin.Mojo;
 import org.apache.maven.plugin.MojoExecution;
@@ -77,6 +78,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -143,6 +145,8 @@ public class CacheControllerImpl implements CacheController
     private final ConcurrentMap<String, CacheResult> cacheResults = new ConcurrentHashMap<>();
 
     private volatile BuildInfoType.Scm scm;
+
+    private volatile Map<String, MavenProject> projectIndex;
 
     @Override
     @Nonnull
@@ -387,7 +391,19 @@ public class CacheControllerImpl implements CacheController
     {
         try
         {
-            final MavenProjectInput inputs = new MavenProjectInput( project, session, cacheConfig,
+            if ( this.projectIndex == null )
+            {
+                Map<String, MavenProject> projectMap = new HashMap<>(
+                        session.getProjects().size() * 2
+                );
+                for ( MavenProject p : session.getProjects() )
+                {
+                    projectMap.put( BuilderCommon.getKey( p ), p );
+                }
+                this.projectIndex = projectMap;
+            }
+
+            final MavenProjectInput inputs = new MavenProjectInput( project, session, this.projectIndex, cacheConfig,
                     artifactDigestByKey, repoSystem, artifactHandlerManager, logger, localCache, remoteCache );
             return inputs.calculateChecksum( cacheConfig.getHashFactory() );
         }
