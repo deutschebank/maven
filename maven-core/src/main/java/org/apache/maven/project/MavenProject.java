@@ -89,8 +89,10 @@ import org.slf4j.LoggerFactory;
  * directories but I hope to take care of this during the Maven 4.0 release (jvz).
  * </p>
  */
-public class MavenProject implements Cloneable
+public class MavenProject
+    implements Cloneable
 {
+
     private static final Logger LOGGER = LoggerFactory.getLogger( MavenProject.class );
 
     public static final String EMPTY_PROJECT_GROUP_ID = "unknown";
@@ -154,8 +156,6 @@ public class MavenProject implements Cloneable
 
     private Model originalModel;
 
-    private Model effectiveOriginalModel;
-
     private Map<String, Artifact> pluginArtifactMap;
 
     private Set<Artifact> reportArtifacts;
@@ -168,7 +168,7 @@ public class MavenProject implements Cloneable
 
     private Map<String, Artifact> managedVersionMap;
 
-    private final Map<String, MavenProject> projectReferences = new HashMap<>();
+    private Map<String, MavenProject> projectReferences = new HashMap<>();
 
     private boolean executionRoot;
 
@@ -185,6 +185,7 @@ public class MavenProject implements Cloneable
     public MavenProject()
     {
         Model model = new Model();
+
         model.setGroupId( EMPTY_PROJECT_GROUP_ID );
         model.setArtifactId( EMPTY_PROJECT_ARTIFACT_ID );
         model.setVersion( EMPTY_PROJECT_VERSION );
@@ -346,7 +347,8 @@ public class MavenProject implements Cloneable
         return testCompileSourceRoots;
     }
 
-    public List<String> getCompileClasspathElements() throws DependencyResolutionRequiredException
+    public List<String> getCompileClasspathElements()
+        throws DependencyResolutionRequiredException
     {
         List<String> list = new ArrayList<>( getArtifacts().size() + 1 );
 
@@ -374,7 +376,8 @@ public class MavenProject implements Cloneable
 
     // TODO this checking for file == null happens because the resolver has been confused about the root
     // artifact or not. things like the stupid dummy artifact coming from surefire.
-    public List<String> getTestClasspathElements() throws DependencyResolutionRequiredException
+    public List<String> getTestClasspathElements()
+        throws DependencyResolutionRequiredException
     {
         List<String> list = new ArrayList<>( getArtifacts().size() + 2 );
 
@@ -401,7 +404,8 @@ public class MavenProject implements Cloneable
         return list;
     }
 
-    public List<String> getRuntimeClasspathElements() throws DependencyResolutionRequiredException
+    public List<String> getRuntimeClasspathElements()
+        throws DependencyResolutionRequiredException
     {
         List<String> list = new ArrayList<>( getArtifacts().size() + 1 );
 
@@ -925,7 +929,8 @@ public class MavenProject implements Cloneable
      * @deprecated Please use {@link MavenProjectHelper}
      * @throws DuplicateArtifactAttachmentException will never happen but leave it for backward compatibility
      */
-    public void addAttachedArtifact( Artifact artifact ) throws DuplicateArtifactAttachmentException
+    public void addAttachedArtifact( Artifact artifact )
+        throws DuplicateArtifactAttachmentException
     {
         // if already there we remove it and add again
         int index = attachedArtifacts.indexOf( artifact );
@@ -1038,19 +1043,9 @@ public class MavenProject implements Cloneable
         this.originalModel = originalModel;
     }
 
-    public void setEffectiveOriginalModel( Model effectiveOriginalModel )
-    {
-        this.effectiveOriginalModel = effectiveOriginalModel;
-    }
-
     public Model getOriginalModel()
     {
         return originalModel;
-    }
-
-    public Model getEffectiveOriginalModel()
-    {
-        return effectiveOriginalModel;
     }
 
     public void setManagedVersionMap( Map<String, Artifact> map )
@@ -1188,6 +1183,7 @@ public class MavenProject implements Cloneable
         {
             throw new UnsupportedOperationException( e );
         }
+
         clone.deepCopy( this );
 
         return clone;
@@ -1310,11 +1306,6 @@ public class MavenProject implements Cloneable
         if ( project.getOriginalModel() != null )
         {
             setOriginalModel( project.getOriginalModel() );
-        }
-
-        if ( project.getEffectiveOriginalModel() != null )
-        {
-            setEffectiveOriginalModel( project.getEffectiveOriginalModel() );
         }
 
         setExecutionRoot( project.isExecutionRoot() );
@@ -1503,7 +1494,8 @@ public class MavenProject implements Cloneable
     private Map<String, String> moduleAdjustments;
 
     @Deprecated // This appears only to be used in test code
-    public String getModulePathAdjustment( MavenProject moduleProject ) throws IOException
+    public String getModulePathAdjustment( MavenProject moduleProject )
+        throws IOException
     {
         // FIXME: This is hacky. What if module directory doesn't match artifactid, and parent
         // is coming from the repository??
@@ -1742,7 +1734,8 @@ public class MavenProject implements Cloneable
     }
 
     @Deprecated
-    public List<String> getSystemClasspathElements() throws DependencyResolutionRequiredException
+    public List<String> getSystemClasspathElements()
+        throws DependencyResolutionRequiredException
     {
         List<String> list = new ArrayList<>( getArtifacts().size() );
 
@@ -1948,7 +1941,8 @@ public class MavenProject implements Cloneable
      * @deprecated Use {@link org.apache.maven.model.io.ModelWriter}.
      */
     @Deprecated
-    public void writeModel( Writer writer ) throws IOException
+    public void writeModel( Writer writer )
+        throws IOException
     {
         MavenXpp3Writer pomWriter = new MavenXpp3Writer();
         pomWriter.write( writer, getModel() );
@@ -1958,7 +1952,8 @@ public class MavenProject implements Cloneable
      * @deprecated Use {@link org.apache.maven.model.io.ModelWriter}.
      */
     @Deprecated
-    public void writeOriginalModel( Writer writer ) throws IOException
+    public void writeOriginalModel( Writer writer )
+        throws IOException
     {
         MavenXpp3Writer pomWriter = new MavenXpp3Writer();
         pomWriter.write( writer, getOriginalModel() );
