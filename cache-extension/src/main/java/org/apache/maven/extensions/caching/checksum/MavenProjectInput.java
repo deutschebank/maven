@@ -912,23 +912,25 @@ public class MavenProjectInput
 
     private List<Plugin> normalizePlugins( List<Plugin> plugins )
     {
+        List<Plugin> result = new ArrayList<>(plugins.size());
         for ( Plugin plugin : plugins )
         {
-            List<String> excludeProperties = config.getEffectivePomExcludeProperties( plugin );
-            removeBlacklistedAttributes( (Xpp3Dom) plugin.getConfiguration(), excludeProperties );
-            for ( PluginExecution execution : plugin.getExecutions() )
+            Plugin copy = plugin.clone();
+            List<String> excludeProperties = config.getEffectivePomExcludeProperties( copy );
+            removeBlacklistedAttributes( (Xpp3Dom) copy.getConfiguration(), excludeProperties );
+            for ( PluginExecution execution : copy.getExecutions() )
             {
                 Xpp3Dom config = (Xpp3Dom) execution.getConfiguration();
                 removeBlacklistedAttributes( config, excludeProperties );
             }
-            plugin.setDependencies(
-                    plugin.getDependencies()
+            copy.setDependencies(
+                    copy.getDependencies()
                             .stream()
                             .sorted(dependencyComparator)
                             .collect( Collectors.toList() )
             );
         }
-        return plugins;
+        return result;
     }
 
     private void removeBlacklistedAttributes( Xpp3Dom node, List<String> excludeProperties )
