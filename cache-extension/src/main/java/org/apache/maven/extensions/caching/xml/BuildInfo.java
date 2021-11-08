@@ -65,7 +65,7 @@ public class BuildInfo
                       String hashAlgorithm )
     {
         this.dto = new BuildInfoType();
-        this.dto.setCacheImplementationVersion( MavenProjectInput.CACHE_IMPLMENTATION_VERSION );
+        this.dto.setCacheImplementationVersion( MavenProjectInput.CACHE_IMPLEMENTATION_VERSION);
         try
         {
             this.dto.setBuildTime( DatatypeFactory.newInstance().newXMLGregorianCalendar( new GregorianCalendar() ) );

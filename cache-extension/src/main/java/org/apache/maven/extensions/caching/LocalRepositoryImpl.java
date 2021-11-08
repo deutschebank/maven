@@ -70,7 +70,7 @@ import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import static org.apache.maven.extensions.caching.ProjectUtils.getMultimoduleRoot;
-import static org.apache.maven.extensions.caching.checksum.MavenProjectInput.CACHE_IMPLMENTATION_VERSION;
+import static org.apache.maven.extensions.caching.checksum.MavenProjectInput.CACHE_IMPLEMENTATION_VERSION;
 
 /**
  * LocalRepositoryImpl
@@ -439,7 +439,7 @@ public class LocalRepositoryImpl implements LocalArtifactsRepository
     private Path artifactCacheDir( MavenSession session, String groupId, String artifactId ) throws IOException
     {
         final String localRepositoryRoot = session.getLocalRepository().getBasedir();
-        final Path path = Paths.get( localRepositoryRoot, "..", "cache", CACHE_IMPLMENTATION_VERSION, groupId,
+        final Path path = Paths.get( localRepositoryRoot, "..", "cache", CACHE_IMPLEMENTATION_VERSION, groupId,
                 artifactId ).normalize();
         if ( !Files.exists( path ) )
         {

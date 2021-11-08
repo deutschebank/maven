@@ -72,9 +72,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +104,7 @@ public class MavenProjectInput
     /**
      * Version ov hashing algorithm implementation. It is recommended to change to simplify remote cache maintenance
      */
-    public static final String CACHE_IMPLMENTATION_VERSION = "v20-SNAPSHOT";
+    public static final String CACHE_IMPLEMENTATION_VERSION = "v20-SNAPSHOT";
 
     /**
      * property name to pass glob value. The glob to be used to list directory files in plugins scanning
