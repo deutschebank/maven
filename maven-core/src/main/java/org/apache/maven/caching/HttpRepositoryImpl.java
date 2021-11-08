@@ -126,7 +126,7 @@ public class HttpRepositoryImpl implements RemoteArtifactsRepository
     public void saveCacheReport( String buildId, MavenSession session, CacheReportType cacheReport ) throws IOException
     {
         MavenProject rootProject = session.getTopLevelProject();
-        final String resourceUrl = cacheConfig.getUrl() + "/" + MavenProjectInput.CACHE_IMPLMENTATION_VERSION
+        final String resourceUrl = cacheConfig.getUrl() + "/" + MavenProjectInput.CACHE_IMPLEMENTATION_VERSION
                 + "/" + rootProject.getGroupId()
                 + "/" + rootProject.getArtifactId()
                 + "/" + buildId
@@ -212,7 +212,7 @@ public class HttpRepositoryImpl implements RemoteArtifactsRepository
 
     private String getResourceUrl( String filename, String groupId, String artifactId, String checksum )
     {
-        return cacheConfig.getUrl() + "/" + MavenProjectInput.CACHE_IMPLMENTATION_VERSION + "/" + groupId + "/"
+        return cacheConfig.getUrl() + "/" + MavenProjectInput.CACHE_IMPLEMENTATION_VERSION + "/" + groupId + "/"
                 + artifactId + "/" + checksum + "/" + filename;
     }
 

@@ -105,7 +105,7 @@ public class MavenProjectInput
     /**
      * Version ov hashing algorithm implementation. It is recommended to change to simplify remote cache maintenance
      */
-    public static final String CACHE_IMPLMENTATION_VERSION = "v20-SNAPSHOT";
+    public static final String CACHE_IMPLEMENTATION_VERSION = "v20-SNAPSHOT";
 
     /**
      * property name to pass glob value. The glob to be used to list directory files in plugins scanning
@@ -203,7 +203,7 @@ public class MavenProjectInput
     {
         long time = Clock.time();
 
-        final String effectivePom = getEffectivePom( project.getEffectiveOriginalModel() );
+        final String effectivePom = getEffectivePom( project.getModel() );
         final SortedSet<Path> inputFiles = getInputFiles();
         final SortedMap<String, DigestItemType> dependenciesChecksum = getMutableDependencies();
 
