@@ -675,7 +675,6 @@ public class DefaultProjectBuilder
 
         project.setModel( model );
         project.setOriginalModel( result.getRawModel() );
-        project.setEffectiveOriginalModel( model.clone() );
         project.setFile( model.getPomFile() );
 
         initParent( project, projects, buildParentIfNotExisting, result, projectBuildingRequest );
