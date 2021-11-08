@@ -356,13 +356,12 @@ public class MavenProjectInput
         toHash.setVersion( prototype.getVersion() );
         toHash.setModules( prototype.getModules() );
 
-        prototype.setDependencies(
+        toHash.setDependencies(
                 prototype.getDependencies()
                         .stream()
                         .sorted(dependencyComparator)
-                        .collect(Collectors.toList())
+                        .collect( Collectors.toList() )
         );
-        toHash.setDependencies( prototype.getDependencies() );
 
         PluginManagement pluginManagement = prototype.getBuild().getPluginManagement();
         pluginManagement.setPlugins( normalizePlugins( prototype.getBuild().getPluginManagement().getPlugins() ) );
@@ -916,6 +915,7 @@ public class MavenProjectInput
         for ( Plugin plugin : plugins )
         {
             Plugin copy = plugin.clone();
+            result.add(copy);
             List<String> excludeProperties = config.getEffectivePomExcludeProperties( copy );
             removeBlacklistedAttributes( (Xpp3Dom) copy.getConfiguration(), excludeProperties );
             for ( PluginExecution execution : copy.getExecutions() )
