@@ -178,6 +178,9 @@ public class CacheControllerImpl implements CacheController
             if ( localBuild.isSuccess() || ( localBuild.isPartialSuccess() && !result.isPartialSuccess() ) )
             {
                 result = localBuild;
+            } else
+            {
+                logger.info("Local build was not found by checksum " + inputInfo.getChecksum());
             }
         }
         cacheResults.put( getVersionlessProjectKey( project ), result );
