@@ -19,6 +19,8 @@ package org.apache.maven.extensions.caching;
  * under the License.
  */
 
+import javax.annotation.Nullable;
+
 /**
  * ScanConfigProperties
  */
@@ -38,6 +40,7 @@ public class ScanConfigProperties
         return recursive;
     }
 
+    @Nullable
     public String getGlob()
     {
         return glob;

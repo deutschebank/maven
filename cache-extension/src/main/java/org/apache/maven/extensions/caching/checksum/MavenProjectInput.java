@@ -45,6 +45,7 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.lifecycle.internal.builder.BuilderCommon;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
+import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
@@ -59,6 +60,7 @@ import org.codehaus.plexus.util.WriterFactory;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -95,6 +97,7 @@ import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.replaceEachRepeatedly;
 import static org.apache.commons.lang3.StringUtils.startsWithAny;
 import static org.apache.commons.lang3.StringUtils.stripToEmpty;
+import static org.apache.maven.extensions.caching.ProjectUtils.isPomPackaging;
 import static org.apache.maven.extensions.caching.ProjectUtils.isSnapshot;
 import static org.apache.maven.extensions.caching.jaxb.PathSetType.Include;
 
@@ -202,8 +205,8 @@ public class MavenProjectInput
     {
         long time = Clock.time();
 
-        final String effectivePom = getEffectivePom( project.getModel(), project.getOriginalModel() );
-        final SortedSet<Path> inputFiles = getInputFiles();
+        final String effectivePom = getEffectivePom();
+        final SortedSet<Path> inputFiles = isPomPackaging( project ) ? Collections.emptySortedSet() : getInputFiles();
         final SortedMap<String, DigestItemType> dependenciesChecksum = getMutableDependencies();
 
         final long inputTime = Clock.elapsed( time );
@@ -341,43 +344,39 @@ public class MavenProjectInput
         return matched;
     }
 
-    /**
-     * @param prototype effective model fully resolved by maven build. Do not pass here just parsed Model.
-     */
-    private String getEffectivePom( Model prototype, Model rawModel ) throws IOException
+    private String getEffectivePom() throws IOException
     {
+
+        Model prototype = this.project.getModel();
+
         // TODO validate status of the model - it should be in resolved state
         Model toHash = new Model();
 
         toHash.setGroupId( prototype.getGroupId() );
         toHash.setArtifactId( prototype.getArtifactId() );
         //does not make sense to add project version to calculate hash
-        toHash.setVersion( /*prototype.getVersion()*/ "STUBBED" );
+        toHash.setVersion( /*prototype.getVersion()*/ "" );
         toHash.setModules( prototype.getModules() );
 
         List<Dependency> effectiveModelDependencies = prototype.getDependencies();
-        List<Dependency> rawModelDependencies = rawModel.getDependencies();
 
-        List<Dependency> dependencies = normalizeDependencies(effectiveModelDependencies, rawModelDependencies);
+        List<Dependency> dependencies = normalizeDependencies(effectiveModelDependencies, collectAllRawDependencies());
         toHash.setDependencies(dependencies);
 
-        PluginManagement pluginManagement = prototype.getBuild().getPluginManagement().clone();
-        Build rawBuild = rawModel.getBuild();
-        pluginManagement.setPlugins(
-                normalizePlugins(
-                        pluginManagement.getPlugins(),
-                        collectAllRawPluginsFromPluginManagement()
-                )
-        );
-
-        List<Plugin> plugins = normalizePlugins(
-                prototype.getBuild().getPlugins(),
-                rawBuild == null ? null : rawBuild.getPlugins()
-        );
-
         Build build = new Build();
-        build.setPluginManagement( pluginManagement );
-        build.setPlugins( plugins );
+        List<Plugin> plugins = prototype.getBuild().getPlugins();
+        Map<String, List<Dependency>> rawPluginsDependencies = collectAllRawPluginsDependencies();
+        build.setPlugins( normalizePlugins( plugins, rawPluginsDependencies ) );
+
+        //no need to track plugin management section in effective pom as it contributes into plugins section
+        //but we need to replace configuration from plugin management section if any for some particular plugin
+        if ( isPomPackaging(this.project) )
+        {
+            PluginManagement pluginManagement = prototype.getBuild().getPluginManagement();
+            PluginManagement pm = pluginManagement.clone();
+            pm.setPlugins( normalizePlugins( pm.getPlugins(), rawPluginsDependencies ) );
+            build.setPluginManagement(pm);
+        }
 
         toHash.setBuild( build );
 
@@ -402,43 +401,195 @@ public class MavenProjectInput
         }
     }
 
-    private List<Plugin> collectAllRawPluginsFromPluginManagement()
+
+    private Map<String, Dependency> collectAllRawDependencies()
     {
+        Map<String, Dependency> dependencyMap = new HashMap<>();
         MavenProject currentProject = this.project;
-        List<Plugin> result = new ArrayList<>();
 
         while( currentProject != null )
         {
             Model rawModel = currentProject.getOriginalModel();
-            Build rawBuild = rawModel.getBuild();
-
-            result.addAll(rawBuild == null || rawBuild.getPluginManagement() == null ?
-                    Collections.emptyList() : rawBuild.getPluginManagement().getPlugins());
+            DependencyManagement dependencyManagement = rawModel.getDependencyManagement();
+            if ( dependencyManagement != null )
+            {
+                collectDependenciesToMap( dependencyManagement.getDependencies(), dependencyMap );
+            }
+            collectDependenciesToMap( rawModel.getDependencies(), dependencyMap );
             currentProject = currentProject.getParent();
+        }
+        return dependencyMap;
+    }
+
+    private static void collectDependenciesToMap(@Nullable List<Dependency> in, Map<String, Dependency> out)
+    {
+        if (in == null)
+        {
+            return;
+        }
+        in.stream().filter(it -> it.getVersion() != null)
+                .forEach(it -> out.putIfAbsent(makeArtifactId(it.getGroupId(), it.getArtifactId()), it));
+    }
+
+    private Map<String, List<Dependency>> collectAllRawPluginsDependencies()
+    {
+        MavenProject currentProject = this.project;
+        Map<String, List<Dependency>> result = new HashMap<>();
+
+        Model originalModel = currentProject.getOriginalModel();
+        Build build = originalModel.getBuild();
+        if ( build != null )
+        {
+            for ( Plugin plugin : build.getPlugins() )
+            {
+                String groupId = normalizeGroupId( plugin.getGroupId() );
+                String artifactId = normalizeArtifactId( plugin.getArtifactId() );
+                List<Dependency> dependencies = plugin.getDependencies();
+                if( dependencies != null )
+                {
+                    result.put( makeArtifactId(groupId, artifactId), dependencies );
+                }
+
+            }
+        }
+
+        for( ; currentProject != null; currentProject = currentProject.getParent() )
+        {
+            build = currentProject.getOriginalModel().getBuild();
+            if (build == null)
+            {
+                continue;
+            }
+            PluginManagement pluginManagement = build.getPluginManagement();
+            if (pluginManagement == null)
+            {
+                continue;
+            }
+
+            for (Plugin plugin : pluginManagement.getPlugins()) {
+                String groupId = normalizeGroupId( plugin.getGroupId() );
+                String artifactId = normalizeArtifactId( plugin.getArtifactId() );
+                String key = makeArtifactId(groupId, artifactId);
+                if ( !result.getOrDefault(key, Collections.emptyList()).isEmpty() || plugin.getDependencies() == null )
+                {
+                    //already have these dependencies
+                    continue;
+                }
+                result.put(key, plugin.getDependencies());
+            }
         }
 
         return result;
     }
 
     private List<Dependency> normalizeDependencies(List<Dependency> effectiveDependencies,
-                                                   List<Dependency> rawDependencies )
+                                                   Map<String, Dependency> rawDependencies )
     {
+        if(effectiveDependencies.isEmpty())
+        {
+            return effectiveDependencies;
+        }
         Map<String, Dependency> dependencyMap = new HashMap<>( effectiveDependencies.size() * 2 );
         effectiveDependencies.forEach( dependency -> dependencyMap.put(dependency.getGroupId() + ":" + dependency.getArtifactId(), dependency));
 
-        rawDependencies.stream()
-                .filter(it -> "${project.version}".equals(it.getVersion()))
-                .forEach(dependency -> {
+        rawDependencies.entrySet().stream()
+                .filter(it -> isRawProjectVersion(it.getValue().getVersion()))
+                .forEach(it -> {
+                    Dependency dependency = it.getValue();
                     String groupId = normalizeGroupId( dependency.getGroupId() );
                     String artifactId = normalizeArtifactId( dependency.getArtifactId() );
-                    String key = groupId + ":" + artifactId;
+                    String key = makeArtifactId(groupId, artifactId);
                     Dependency removed = dependencyMap.remove(key);
-                    Dependency clone = removed.clone();
-                    clone.setGroupId(groupId);
-                    clone.setVersion(dependency.getVersion());
-                    dependencyMap.put(key, clone);
+                    if (removed != null)
+                    {
+                        Dependency clone = removed.clone();
+                        clone.setGroupId(groupId);
+                        clone.setVersion("${project.version}");
+                        dependencyMap.put(key, clone);
+                    }
                 });
         return dependencyMap.values().stream().sorted(dependencyComparator).collect(Collectors.toList());
+    }
+
+    private boolean isRawProjectVersion(String version) {
+
+        if ( isProjectVersionPlaceholder(version) )
+        {
+            return true;
+        }
+
+        return isProjectVersionPlaceholder( resolveRawPropertyValue( version ) );
+    }
+
+    private boolean isProjectVersionPlaceholder( @Nullable String propertyName )
+    {
+        return ("${project.version}".equals(propertyName)
+                || "${pom.version}".equals(propertyName));
+    }
+
+    /*
+        <abfx-configuration.version>${module-dependencies.version}</abfx-configuration.version>
+        <module-dependencies.version>${project.version}</module-dependencies.version>
+
+        this resolve abfx-configuration.version to ${project.version}
+
+     */
+    @Nullable
+    private String resolveRawPropertyValue(@Nullable String propertyName)
+    {
+        //Not a placeholder return value as is
+        if ( !isPropertyPlaceholder(propertyName) )
+        {
+            return propertyName;
+        }
+        String propertyToFind = getPropertyFromPlaceholder(propertyName);
+        String property = System.getProperties().getProperty(propertyToFind);
+        if (property != null)
+        {
+            if ( !isPropertyPlaceholder(property) )
+            {
+                return property;
+            }
+            propertyToFind = getPropertyFromPlaceholder( propertyName );
+        }
+        MavenProject currentProject = this.project;
+        String currentResult = null;
+
+        while( currentProject != null )
+        {
+            String projectProperty = currentProject.getOriginalModel().getProperties().getProperty(propertyToFind);
+            if (projectProperty != null)
+            {
+                currentResult = projectProperty;
+            }
+            if ( isPropertyPlaceholder(projectProperty) )
+            {
+                //This is a placeholder let's try another attempt to find in this project before we go to parent
+                propertyToFind = getPropertyFromPlaceholder( projectProperty );
+                continue;
+            } else if ( projectProperty != null )
+            {
+                //This is not a placeholder no need to lookup in parent project
+                break;
+            }
+
+            currentProject = currentProject.getParent();
+        }
+       return currentResult;
+    }
+
+    private static String getPropertyFromPlaceholder(String propertyName) {
+        return propertyName.substring(2, propertyName.length() - 1);
+    }
+
+    private static boolean isPropertyPlaceholder(@Nullable String property)
+    {
+        return property != null && property.startsWith("${") && property.endsWith("}");
+    }
+
+    private static String makeArtifactId( String groupId, String artifactId )
+    {
+        return groupId + ":" + artifactId;
     }
 
     private String normalizeGroupId( String gId )
@@ -807,7 +958,7 @@ public class MavenProjectInput
         }
     }
 
-    static void walkDirectoryFiles( Path dir, List<Path> collectedFiles, String glob )
+    void walkDirectoryFiles( Path dir, List<Path> collectedFiles, String glob )
     {
         if ( !Files.isDirectory( dir ) )
         {
@@ -820,6 +971,11 @@ public class MavenProjectInput
             {
                 for ( Path entry : stream )
                 {
+                    if ( filteredOutPaths.stream().anyMatch( path -> path.getFileName().equals( entry.getFileName() ) ) )
+                    {
+                        continue;
+                    }
+
                     File file = entry.toFile();
                     if ( file.isFile() && !isHidden( entry ) )
                     {
@@ -997,22 +1153,8 @@ public class MavenProjectInput
         }
     }
 
-    private List<Plugin> normalizePlugins( List<Plugin> plugins, List<Plugin> rawPlugins )
+    private List<Plugin> normalizePlugins( List<Plugin> plugins, Map<String, List<Dependency>> rawPluginsMap )
     {
-
-        Map<String, Plugin> rawPluginsMap = Collections.emptyMap();
-
-        if ( rawPlugins != null )
-        {
-            Map<String, Plugin> map = new HashMap<>(rawPlugins.size() * 2);
-            rawPlugins.forEach( plugin -> {
-                String groupId = normalizeGroupId( plugin.getGroupId() );
-                String artifactId = normalizeArtifactId( plugin.getArtifactId() );
-                map.putIfAbsent( groupId + ":" + artifactId, plugin);
-            } );
-            rawPluginsMap = map;
-        }
-
         List<Plugin> result = new ArrayList<>(plugins.size());
         for ( Plugin plugin : plugins )
         {
@@ -1026,10 +1168,18 @@ public class MavenProjectInput
                 removeBlacklistedAttributes( config, excludeProperties );
             }
 
-            Plugin rawPlugin = rawPluginsMap.get( copy.getGroupId() + ":" + copy.getArtifactId() );
-            List<Dependency> dependencies = rawPlugin == null ?
-                    copy.getDependencies() :
-                    normalizeDependencies( copy.getDependencies(),  rawPlugin.getDependencies() );
+            List<Dependency> rawPluginDependencies = rawPluginsMap.get( copy.getGroupId() + ":" + copy.getArtifactId() );
+            List<Dependency> dependencies;
+
+            if ( rawPluginDependencies == null )
+            {
+                dependencies = copy.getDependencies();
+            } else
+            {
+                Map<String, Dependency> dependencyMap = new HashMap<>( rawPluginDependencies.size() * 2 );
+                collectDependenciesToMap(rawPluginDependencies, dependencyMap);
+                dependencies = normalizeDependencies( copy.getDependencies(), dependencyMap );
+            }
 
             copy.setDependencies(
                     dependencies

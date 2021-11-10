@@ -278,7 +278,7 @@
                 </xs:documentation>
             </xs:annotation>
         </xs:attribute>
-        <xs:attribute name="glob" type="xs:string" default="*">
+        <xs:attribute name="glob" type="xs:string">
             <xs:annotation>
                 <xs:documentation>
                     Glob to apply when scanning dir denoted by this property
@@ -373,7 +373,7 @@
 
     <xs:complexType name="PathSetType">
         <xs:sequence>
-            <xs:element name="glob" type="xs:string" minOccurs="0" default="*"/>
+            <xs:element name="glob" type="xs:string" minOccurs="0" />
             <xs:element name="include" minOccurs="0" maxOccurs="unbounded">
                 <xs:complexType>
                     <xs:simpleContent>

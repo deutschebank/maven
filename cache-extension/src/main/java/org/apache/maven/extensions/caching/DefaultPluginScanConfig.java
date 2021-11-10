@@ -52,7 +52,7 @@ public class DefaultPluginScanConfig implements PluginScanConfig
     @Override
     public ScanConfigProperties getTagScanProperties( String tagName )
     {
-        return new ScanConfigProperties( true, "*" );
+        return new ScanConfigProperties( true, null );
     }
 
     @Override
