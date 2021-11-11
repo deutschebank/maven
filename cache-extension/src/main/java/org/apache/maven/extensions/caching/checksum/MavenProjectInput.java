@@ -376,7 +376,6 @@ public class MavenProjectInput
         build.setPlugins( normalizePlugins( plugins, rawPluginsDependencies ) );
 
         //no need to track plugin management section in effective pom as it contributes into plugins section
-        //but we need to replace configuration from plugin management section if any for some particular plugin
         if ( isPomPackaging(this.project) )
         {
             PluginManagement pluginManagement = prototype.getBuild().getPluginManagement();
