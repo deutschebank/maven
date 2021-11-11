@@ -24,7 +24,6 @@ import com.google.common.base.Optional;
 import com.google.common.collect.Iterables;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
 import org.apache.maven.artifact.resolver.ArtifactResolutionRequest;
 import org.apache.maven.artifact.resolver.ArtifactResolutionResult;
 import org.apache.maven.extensions.caching.CacheItemProvider;
@@ -145,7 +144,6 @@ public class MavenProjectInput
     private final LocalArtifactsRepository localCache;
     private final RemoteArtifactsRepository remoteCache;
     private final RepositorySystem repoSystem;
-    private final ArtifactHandlerManager artifactHandlerManager;
     private final CacheConfig config;
     private final ConcurrentMap<String, DigestItemType> projectArtifactsByKey;
     private final PathIgnoringCaseComparator fileComparator;
@@ -164,7 +162,6 @@ public class MavenProjectInput
                               CacheConfig config,
                               ConcurrentMap<String, DigestItemType> artifactsByKey,
                               RepositorySystem repoSystem,
-                              ArtifactHandlerManager artifactHandlerManager,
                               Logger logger,
                               LocalArtifactsRepository localCache,
                               RemoteArtifactsRepository remoteCache,
@@ -177,7 +174,6 @@ public class MavenProjectInput
         this.projectArtifactsByKey = artifactsByKey;
         this.baseDirPath = project.getBasedir().toPath().toAbsolutePath();
         this.repoSystem = repoSystem;
-        this.artifactHandlerManager = artifactHandlerManager;
         this.logger = logger;
         this.localCache = localCache;
         this.remoteCache = remoteCache;
@@ -372,7 +368,7 @@ public class MavenProjectInput
 
         Build build = new Build();
         List<Plugin> plugins = prototype.getBuild().getPlugins();
-        Map<String, List<Dependency>> rawPluginsDependencies = collectAllRawPluginsDependencies();
+        Map<String, Plugin> rawPluginsDependencies = collectAllRawPlugins();
         build.setPlugins( normalizePlugins( plugins, rawPluginsDependencies ) );
 
         //no need to track plugin management section in effective pom as it contributes into plugins section
@@ -451,16 +447,19 @@ public class MavenProjectInput
                         ), it));
     }
 
-    private Map<String, List<Dependency>> collectAllRawPluginsDependencies()
+    private Map<String, Plugin> collectAllRawPlugins()
     {
         MavenProject currentProject = this.project;
 
-        Map<String, List<Dependency>> result = new HashMap<>();
+        Map<String, Plugin> result = new HashMap<>();
         Model originalModel = currentProject.getOriginalModel();
 
-        getActiveProfiles( currentProject, originalModel ).forEach( p -> collectPluginDependencies( p.getBuild(), result ) );
+        //collect all plugin dependencies from build section
+        getActiveProfiles( currentProject, originalModel )
+                .forEach( p -> collectPluginDependencies( p.getBuild(), result ) );
         collectPluginDependencies( originalModel.getBuild(), result );
 
+        //collect all plugin dependencies from current and all ancestors pluginManagement sections
         for( ; currentProject != null; currentProject = currentProject.getParent() )
         {
             Model rawModel = currentProject.getOriginalModel();
@@ -484,18 +483,26 @@ public class MavenProjectInput
                         String groupId = normalizeGroupId(plugin.getGroupId());
                         String artifactId = normalizeArtifactId(plugin.getArtifactId());
                         String key = makeArtifactId(groupId, artifactId);
-                        if (!result.getOrDefault(key, Collections.emptyList()).isEmpty() || plugin.getDependencies() == null) {
-                            //already have these dependencies
-                            return;
+                        Plugin plug = result.computeIfAbsent(key, k -> {
+                            Plugin p = plugin.clone();
+                            p.setArtifactId(artifactId);
+                            p.setGroupId(groupId);
+                            return p;
+                        });
+                        if ( plug.getVersion() == null )
+                        {
+                            plug.setVersion( plugin.getVersion() );
                         }
-                        result.put(key, plugin.getDependencies());
+                        if ( plug.getDependencies() == null || plug.getDependencies().isEmpty() ) {
+                            plug.setDependencies( plugin.getDependencies() );
+                        }
             } );
         }
 
         return result;
     }
 
-    private void collectPluginDependencies(BuildBase build, Map<String, List<Dependency>> out )
+    private void collectPluginDependencies(BuildBase build, Map<String, Plugin> out )
     {
         if ( build == null )
         {
@@ -506,9 +513,18 @@ public class MavenProjectInput
             String groupId = normalizeGroupId( plugin.getGroupId() );
             String artifactId = normalizeArtifactId( plugin.getArtifactId() );
             List<Dependency> dependencies = plugin.getDependencies();
-            if( dependencies != null )
+            String key = makeArtifactId(groupId, artifactId);
+            Plugin plug = out.computeIfAbsent(key, k -> {
+                Plugin p = plugin.clone();
+                p.setArtifactId(artifactId);
+                p.setGroupId(groupId);
+                //to make mutable list
+                p.setDependencies(new ArrayList<>());
+                return p;
+            });
+            if ( dependencies != null )
             {
-                out.put( makeArtifactId(groupId, artifactId), dependencies );
+                plug.getDependencies().addAll(dependencies);
             }
         }
     }
@@ -538,7 +554,15 @@ public class MavenProjectInput
         effectiveDependencies.forEach( dependency -> dependencyMap.put(dependency.getGroupId() + ":" + dependency.getArtifactId(), dependency));
 
         rawDependencies.entrySet().stream()
-                .filter(it -> isRawProjectPlaceholder(it.getValue().getVersion()))
+                .filter(it -> {
+                    String rawVersion = resolveRawPropertyValue(it.getValue().getVersion());
+                    if ( isProjectPlaceholder(rawVersion) )
+                    {
+                        it.getValue().setVersion( rawVersion );
+                        return true;
+                    }
+                    return false;
+                })
                 .forEach(it -> {
                     Dependency dependency = it.getValue();
                     String groupId = normalizeGroupId( dependency.getGroupId() );
@@ -554,16 +578,6 @@ public class MavenProjectInput
                     }
                 });
         return dependencyMap.values().stream().sorted(dependencyComparator).collect(Collectors.toList());
-    }
-
-    private boolean isRawProjectPlaceholder(String version) {
-
-        if ( isProjectPlaceholder(version) )
-        {
-            return true;
-        }
-
-        return isProjectPlaceholder( resolveRawPropertyValue( version ) );
     }
 
     private boolean isProjectPlaceholder(@Nullable String propertyName )
@@ -582,23 +596,24 @@ public class MavenProjectInput
     @Nullable
     private String resolveRawPropertyValue(@Nullable String propertyName)
     {
-        //Not a placeholder return value as is
-        if ( !isPropertyPlaceholder(propertyName) )
+        //Not a placeholder or project placeholder return value as is
+        if ( !isPropertyPlaceholder(propertyName) || isProjectPlaceholder(propertyName) )
         {
             return propertyName;
         }
+        String currentResult = propertyName;
         String propertyToFind = getPropertyFromPlaceholder(propertyName);
-        String property = System.getProperties().getProperty(propertyToFind);
-        if (property != null)
+        String sysPropertyName = System.getProperties().getProperty(propertyToFind);
+        if (sysPropertyName != null)
         {
-            if ( !isPropertyPlaceholder(property) )
+            if ( !isPropertyPlaceholder(sysPropertyName) || isProjectPlaceholder(sysPropertyName) )
             {
-                return property;
+                return sysPropertyName;
             }
-            propertyToFind = getPropertyFromPlaceholder( propertyName );
+            propertyToFind = getPropertyFromPlaceholder( sysPropertyName );
+            currentResult = sysPropertyName;
         }
         MavenProject currentProject = this.project;
-        String currentResult = null;
 
         while( currentProject != null )
         {
@@ -607,7 +622,7 @@ public class MavenProjectInput
             {
                 currentResult = projectProperty;
             }
-            if ( isPropertyPlaceholder(projectProperty) )
+            if ( isPropertyPlaceholder( projectProperty ) )
             {
                 //This is a placeholder let's try another attempt to find in this project before we go to parent
                 propertyToFind = getPropertyFromPlaceholder( projectProperty );
@@ -1198,7 +1213,7 @@ public class MavenProjectInput
         }
     }
 
-    private List<Plugin> normalizePlugins( List<Plugin> plugins, Map<String, List<Dependency>> rawPluginsMap )
+    private List<Plugin> normalizePlugins( List<Plugin> plugins, Map<String, Plugin> rawPluginsMap )
     {
         List<Plugin> result = new ArrayList<>(plugins.size());
         for ( Plugin plugin : plugins )
@@ -1213,10 +1228,11 @@ public class MavenProjectInput
                 removeBlacklistedAttributes( config, excludeProperties );
             }
 
-            List<Dependency> rawPluginDependencies = rawPluginsMap.get( copy.getGroupId() + ":" + copy.getArtifactId() );
+            Plugin rawPlugin = rawPluginsMap.get( copy.getGroupId() + ":" + copy.getArtifactId() );
+            List<Dependency> rawPluginDependencies = rawPlugin == null ? null : rawPlugin.getDependencies();
             List<Dependency> dependencies;
 
-            if ( rawPluginDependencies == null )
+            if ( rawPlugin == null || rawPluginDependencies == null )
             {
                 dependencies = copy.getDependencies();
             } else
@@ -1232,6 +1248,14 @@ public class MavenProjectInput
                             .sorted(dependencyComparator)
                             .collect( Collectors.toList() )
             );
+            if ( rawPlugin != null && rawPlugin.getVersion() != null )
+            {
+                String rawVersion = resolveRawPropertyValue( rawPlugin.getVersion() );
+                if ( isProjectPlaceholder( rawVersion ) )
+                {
+                    copy.setVersion( rawPlugin.getVersion() );
+                }
+            }
         }
         return result;
     }

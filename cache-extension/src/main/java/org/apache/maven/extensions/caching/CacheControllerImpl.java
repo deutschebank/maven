@@ -519,7 +519,7 @@ public class CacheControllerImpl implements CacheController
             }
 
             final MavenProjectInput inputs = new MavenProjectInput( project, session, this.projectIndex, cacheConfig,
-                    artifactDigestByKey, repoSystem, artifactHandlerManager, logger,
+                    artifactDigestByKey, repoSystem, logger,
                     localCache, remoteCache, cacheItemProvider );
             return inputs.calculateChecksum( cacheConfig.getHashFactory() );
         }
