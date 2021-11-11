@@ -244,7 +244,7 @@ public class CacheControllerImpl implements CacheController
 
                 if ( logger.isDebugEnabled() )
                 {
-                    logDebug( project, "Cached build details: " + info.toString() );
+                    logDebug( project, "Cached build details: " + info );
                 }
 
                 final String cacheImplementationVersion = info.getCacheImplementationVersion();
@@ -335,15 +335,7 @@ public class CacheControllerImpl implements CacheController
                 }
                 logDebug( project, "Setting project artifact " + artifact.getArtifactId() + " from: " + artifactFile );
 
-                //we might store in cache artifact which was build with previous version
-                //1.0-SNAPSHOT is kept in cache but real version of project is 2.0
-                //for pom packaging this is done automatically by maven but for jar and other there might be
-                //sensitive metadata with previous version. Versions mismatch could lead errors
-                if ( "jar".equals(artifact.getType()) && !project.getVersion().equals( originalArtifactVersion ) )
-                {
-                    artifactFile = adjustJarArtifactVersion( project.getVersion(), originalArtifactVersion, artifactFile );
-                }
-
+                artifactFile = adjustArchiveArtifactVersion( project, originalArtifactVersion, artifactFile );
                 project.getArtifact().setFile( artifactFile.toFile() );
                 project.getArtifact().setResolved( true );
                 putChecksum( artifact, context.getInputInfo().getChecksum() );
@@ -354,7 +346,7 @@ public class CacheControllerImpl implements CacheController
                 attachedArtifact.setVersion( project.getVersion() );
                 if ( isNotBlank( attachedArtifact.getFileName() ) )
                 {
-                    final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                    Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
                             attachedArtifact );
                     if ( !Files.exists( attachedArtifactFile ) )
                     {
@@ -368,6 +360,9 @@ public class CacheControllerImpl implements CacheController
                     }
                     logDebug( project,
                             "Attaching artifact " + artifact.getArtifactId() + " from: " + attachedArtifactFile );
+
+                    attachedArtifactFile = adjustArchiveArtifactVersion( project, originalArtifactVersion, attachedArtifactFile );
+
                     if ( StringUtils.startsWith( attachedArtifact.getClassifier(), GENERATEDSOURCES_PREFIX ) )
                     {
                         // generated sources artifact
@@ -393,9 +388,33 @@ public class CacheControllerImpl implements CacheController
         return true;
     }
 
-    private Path adjustJarArtifactVersion( String currentVersion, String originalArtifactVersion, Path artifactFile )
+    private static boolean isArchive( File file )
+    {
+        String fileName = file.getName();
+        if ( !file.isFile() || file.isHidden() )
+        {
+            return false;
+        }
+        return fileName.endsWith(".jar") || fileName.endsWith(".zip")
+                || fileName.endsWith(".war") || fileName.endsWith(".ear");
+    }
+
+    //we might store in cache artifact which was build with previous version
+    //1.0-SNAPSHOT is kept in cache but real version of project is 2.0
+    //for pom packaging this is done automatically by maven but for jar and other there might be
+    //sensitive metadata with previous version. Versions mismatch could lead errors
+    private Path adjustArchiveArtifactVersion( MavenProject project, String originalArtifactVersion, Path artifactFile )
             throws IOException {
-        File tmpJarFile = File.createTempFile( artifactFile.toFile().getName(), ".tmp" );
+
+        File file = artifactFile.toFile();
+        if ( project.getVersion().equals( originalArtifactVersion ) || !isArchive( file ) )
+        {
+            return artifactFile;
+        }
+
+        String currentVersion = project.getVersion();
+        File tmpJarFile = File.createTempFile( artifactFile.toFile().getName(),
+                '.'+FilenameUtils.getExtension( file.getName() ) );
         tmpJarFile.deleteOnExit();
         String originalImplVersion = Attributes.Name.IMPLEMENTATION_VERSION + ": " + originalArtifactVersion;
         String implVersion = Attributes.Name.IMPLEMENTATION_VERSION + ": " + currentVersion;
