@@ -27,6 +27,7 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
 import org.apache.maven.artifact.resolver.ArtifactResolutionRequest;
 import org.apache.maven.artifact.resolver.ArtifactResolutionResult;
+import org.apache.maven.extensions.caching.CacheItemProvider;
 import org.apache.maven.extensions.caching.Clock;
 import org.apache.maven.extensions.caching.LocalArtifactsRepository;
 import org.apache.maven.extensions.caching.PluginScanConfig;
@@ -44,12 +45,14 @@ import org.apache.maven.extensions.caching.xml.DtoUtils;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.lifecycle.internal.builder.BuilderCommon;
 import org.apache.maven.model.Build;
+import org.apache.maven.model.BuildBase;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
 import org.apache.maven.model.PluginManagement;
+import org.apache.maven.model.Profile;
 import org.apache.maven.model.Resource;
 import org.apache.maven.model.io.xpp3.MavenXpp3Writer;
 import org.apache.maven.project.MavenProject;
@@ -89,6 +92,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.apache.commons.lang3.StringUtils.contains;
 import static org.apache.commons.lang3.StringUtils.defaultIfEmpty;
@@ -151,6 +155,7 @@ public class MavenProjectInput
     private final String dirGlob;
     private final boolean processPlugins;
     private final Map<String, MavenProject> projectIndex;
+    private final CacheItemProvider cacheItemProvider;
 
     @SuppressWarnings( "checkstyle:parameternumber" )
     public MavenProjectInput( MavenProject project,
@@ -162,7 +167,8 @@ public class MavenProjectInput
                               ArtifactHandlerManager artifactHandlerManager,
                               Logger logger,
                               LocalArtifactsRepository localCache,
-                              RemoteArtifactsRepository remoteCache )
+                              RemoteArtifactsRepository remoteCache,
+                              CacheItemProvider cacheItemProvider )
     {
         this.project = project;
         this.session = session;
@@ -199,6 +205,7 @@ public class MavenProjectInput
 
         this.fileComparator = new PathIgnoringCaseComparator();
         this.dependencyComparator = new DependencyComparator();
+        this.cacheItemProvider = cacheItemProvider;
     }
 
     public ProjectsInputInfoType calculateChecksum( HashFactory hashFactory ) throws IOException
@@ -360,7 +367,7 @@ public class MavenProjectInput
 
         List<Dependency> effectiveModelDependencies = prototype.getDependencies();
 
-        List<Dependency> dependencies = normalizeDependencies(effectiveModelDependencies, collectAllRawDependencies());
+        List<Dependency> dependencies = normalizeDependencies( effectiveModelDependencies, collectAllRawDependencies() );
         toHash.setDependencies(dependencies);
 
         Build build = new Build();
@@ -410,52 +417,55 @@ public class MavenProjectInput
         while( currentProject != null )
         {
             Model rawModel = currentProject.getOriginalModel();
+            collectRawDependenciesWithVersion( rawModel.getDependencies(), dependencyMap );
             DependencyManagement dependencyManagement = rawModel.getDependencyManagement();
             if ( dependencyManagement != null )
             {
-                collectDependenciesToMap( dependencyManagement.getDependencies(), dependencyMap );
+                collectRawDependenciesWithVersion( dependencyManagement.getDependencies(), dependencyMap );
             }
-            collectDependenciesToMap( rawModel.getDependencies(), dependencyMap );
+
+            getActiveProfiles( currentProject, rawModel ).forEach( p -> {
+                collectRawDependenciesWithVersion( p.getDependencies(), dependencyMap );
+                DependencyManagement dm = p.getDependencyManagement();
+                if ( dm != null )
+                {
+                    collectRawDependenciesWithVersion( dm.getDependencies(), dependencyMap );
+                }
+            });
+
             currentProject = currentProject.getParent();
         }
         return dependencyMap;
     }
 
-    private static void collectDependenciesToMap(@Nullable List<Dependency> in, Map<String, Dependency> out)
+    private void collectRawDependenciesWithVersion(@Nullable List<Dependency> in, Map<String, Dependency> out)
     {
         if (in == null)
         {
             return;
         }
         in.stream().filter(it -> it.getVersion() != null)
-                .forEach(it -> out.putIfAbsent(makeArtifactId(it.getGroupId(), it.getArtifactId()), it));
+                .forEach(it -> out.putIfAbsent(
+                        makeArtifactId(
+                                normalizeGroupId(it.getGroupId()),
+                                normalizeArtifactId(it.getArtifactId())
+                        ), it));
     }
 
     private Map<String, List<Dependency>> collectAllRawPluginsDependencies()
     {
         MavenProject currentProject = this.project;
+
         Map<String, List<Dependency>> result = new HashMap<>();
-
         Model originalModel = currentProject.getOriginalModel();
-        Build build = originalModel.getBuild();
-        if ( build != null )
-        {
-            for ( Plugin plugin : build.getPlugins() )
-            {
-                String groupId = normalizeGroupId( plugin.getGroupId() );
-                String artifactId = normalizeArtifactId( plugin.getArtifactId() );
-                List<Dependency> dependencies = plugin.getDependencies();
-                if( dependencies != null )
-                {
-                    result.put( makeArtifactId(groupId, artifactId), dependencies );
-                }
 
-            }
-        }
+        getActiveProfiles( currentProject, originalModel ).forEach( p -> collectPluginDependencies( p.getBuild(), result ) );
+        collectPluginDependencies( originalModel.getBuild(), result );
 
         for( ; currentProject != null; currentProject = currentProject.getParent() )
         {
-            build = currentProject.getOriginalModel().getBuild();
+            Model rawModel = currentProject.getOriginalModel();
+            Build build = rawModel.getBuild();
             if (build == null)
             {
                 continue;
@@ -466,20 +476,56 @@ public class MavenProjectInput
                 continue;
             }
 
-            for (Plugin plugin : pluginManagement.getPlugins()) {
-                String groupId = normalizeGroupId( plugin.getGroupId() );
-                String artifactId = normalizeArtifactId( plugin.getArtifactId() );
-                String key = makeArtifactId(groupId, artifactId);
-                if ( !result.getOrDefault(key, Collections.emptyList()).isEmpty() || plugin.getDependencies() == null )
-                {
-                    //already have these dependencies
-                    continue;
-                }
-                result.put(key, plugin.getDependencies());
-            }
+            Stream<Plugin> pluginManagementStream = getActiveProfiles( currentProject, rawModel)
+                    .filter(p -> p.getBuild() != null && p.getBuild().getPluginManagement() != null)
+                    .flatMap(p -> p.getBuild().getPluginManagement().getPlugins().stream() );
+
+            Stream.concat( pluginManagement.getPlugins().stream(), pluginManagementStream )
+                    .forEach( plugin -> {
+                        String groupId = normalizeGroupId(plugin.getGroupId());
+                        String artifactId = normalizeArtifactId(plugin.getArtifactId());
+                        String key = makeArtifactId(groupId, artifactId);
+                        if (!result.getOrDefault(key, Collections.emptyList()).isEmpty() || plugin.getDependencies() == null) {
+                            //already have these dependencies
+                            return;
+                        }
+                        result.put(key, plugin.getDependencies());
+            } );
         }
 
         return result;
+    }
+
+    private void collectPluginDependencies(BuildBase build, Map<String, List<Dependency>> out )
+    {
+        if ( build == null )
+        {
+            return;
+        }
+        for ( Plugin plugin : build.getPlugins() )
+        {
+            String groupId = normalizeGroupId( plugin.getGroupId() );
+            String artifactId = normalizeArtifactId( plugin.getArtifactId() );
+            List<Dependency> dependencies = plugin.getDependencies();
+            if( dependencies != null )
+            {
+                out.put( makeArtifactId(groupId, artifactId), dependencies );
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Stream<Profile> getActiveProfiles( MavenProject project, Model model )
+    {
+        Set<String> activeProfileIds = cacheItemProvider.getCache("activeProfileIds", String.class, Set.class)
+                .computeIfAbsent(project.getId(), k -> project.getActiveProfiles().stream()
+                        .map(Profile::getId)
+                        .collect(Collectors.toSet()));
+        List<Profile> profiles = model.getProfiles();
+        if ( profiles != null ) {
+            return profiles.stream().filter(p -> activeProfileIds.contains(p.getId()));
+        }
+        return Stream.empty();
     }
 
     private List<Dependency> normalizeDependencies(List<Dependency> effectiveDependencies,
@@ -493,7 +539,7 @@ public class MavenProjectInput
         effectiveDependencies.forEach( dependency -> dependencyMap.put(dependency.getGroupId() + ":" + dependency.getArtifactId(), dependency));
 
         rawDependencies.entrySet().stream()
-                .filter(it -> isRawProjectVersion(it.getValue().getVersion()))
+                .filter(it -> isRawProjectPlaceholder(it.getValue().getVersion()))
                 .forEach(it -> {
                     Dependency dependency = it.getValue();
                     String groupId = normalizeGroupId( dependency.getGroupId() );
@@ -504,27 +550,27 @@ public class MavenProjectInput
                     {
                         Dependency clone = removed.clone();
                         clone.setGroupId(groupId);
-                        clone.setVersion("${project.version}");
+                        clone.setVersion(dependency.getVersion().replace("pom.", "project."));
                         dependencyMap.put(key, clone);
                     }
                 });
         return dependencyMap.values().stream().sorted(dependencyComparator).collect(Collectors.toList());
     }
 
-    private boolean isRawProjectVersion(String version) {
+    private boolean isRawProjectPlaceholder(String version) {
 
-        if ( isProjectVersionPlaceholder(version) )
+        if ( isProjectPlaceholder(version) )
         {
             return true;
         }
 
-        return isProjectVersionPlaceholder( resolveRawPropertyValue( version ) );
+        return isProjectPlaceholder( resolveRawPropertyValue( version ) );
     }
 
-    private boolean isProjectVersionPlaceholder( @Nullable String propertyName )
+    private boolean isProjectPlaceholder(@Nullable String propertyName )
     {
-        return ("${project.version}".equals(propertyName)
-                || "${pom.version}".equals(propertyName));
+        return propertyName != null
+                && ( propertyName.startsWith("${project.") || propertyName.startsWith("${pom.") );
     }
 
     /*
@@ -1177,7 +1223,7 @@ public class MavenProjectInput
             } else
             {
                 Map<String, Dependency> dependencyMap = new HashMap<>( rawPluginDependencies.size() * 2 );
-                collectDependenciesToMap(rawPluginDependencies, dependencyMap);
+                collectRawDependenciesWithVersion(rawPluginDependencies, dependencyMap);
                 dependencies = normalizeDependencies( copy.getDependencies(), dependencyMap );
             }
 
