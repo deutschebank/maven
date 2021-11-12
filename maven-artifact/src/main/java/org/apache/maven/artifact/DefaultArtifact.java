@@ -25,7 +25,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 
+import org.apache.commons.lang3.concurrent.ConcurrentRuntimeException;
+import org.apache.commons.lang3.concurrent.ConcurrentUtils;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.metadata.ArtifactMetadata;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -54,7 +59,7 @@ public class DefaultArtifact
 
     private volatile String scope;
 
-    private volatile File file;
+    private volatile Future<File> file;
 
     private ArtifactRepository repository;
 
@@ -199,12 +204,47 @@ public class DefaultArtifact
 
     public void setFile( File file )
     {
+        if ( file != null )
+        {
+            this.file = ConcurrentUtils.constantFuture( file );
+        }
+        else
+        {
+            // TODO cancel future? races here
+            this.file = null;
+        }
+    }
+
+    public void setFile( Future<File> file )
+    {
         this.file = file;
     }
 
     public File getFile()
     {
-        return file;
+        final Future<File> localRef = file;
+        if ( localRef == null )
+        {
+            return null;
+        }
+        if ( localRef instanceof FutureTask && !localRef.isDone() )
+        {
+            ( (FutureTask<File>) file ).run();
+        }
+        try
+        {
+            return file.get();
+        }
+        catch ( InterruptedException e )
+        {
+            Thread.currentThread().interrupt();
+            throw new ConcurrentRuntimeException( "Download of artifact " + artifactId + " interrupted while waiting",
+                    e );
+        }
+        catch ( ExecutionException e )
+        {
+            throw ConcurrentUtils.extractCauseUnchecked( e );
+        }
     }
 
     public ArtifactRepository getRepository()

@@ -95,6 +95,8 @@ import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.regex.Pattern;
 
 import static java.nio.file.StandardOpenOption.CREATE;
@@ -326,18 +328,11 @@ public class CacheControllerImpl implements CacheController
         {
             if ( isNotBlank( artifact.getFileName() ) )
             {
-                // TODO if remote is forced, probably need to refresh or reconcile all files
-                Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(), artifact );
-                if ( !Files.exists( artifactFile ) )
-                {
-                    logInfo( project, "Missing file for cached build, cannot restore. File: " + artifactFile );
-                    return false;
-                }
-                logDebug( project, "Setting project artifact " + artifact.getArtifactId() + " from: " + artifactFile );
-
-                artifactFile = adjustArchiveArtifactVersion( project, originalArtifactVersion, artifactFile );
-                project.getArtifact().setFile( artifactFile.toFile() );
+                logDebug( project, "Setting lazy project artifact " + artifact.getArtifactId() );
+                Future<File> downloadTask = createDownloadTask( cacheResult, context, project, artifact );
+                project.getArtifact().setFile( downloadTask );
                 project.getArtifact().setResolved( true );
+
                 putChecksum( artifact, context.getInputInfo().getChecksum() );
             }
 
@@ -346,32 +341,19 @@ public class CacheControllerImpl implements CacheController
                 attachedArtifact.setVersion( project.getVersion() );
                 if ( isNotBlank( attachedArtifact.getFileName() ) )
                 {
-                    Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
-                            attachedArtifact );
-                    if ( !Files.exists( attachedArtifactFile ) )
-                    {
-                        logInfo( project,
-                                "Missing file for cached build, cannot restore project. File: "
-                                        + attachedArtifactFile );
-                        project.getArtifact().setFile( null );
-                        project.getArtifact().setResolved( false );
-                        project.getAttachedArtifacts().clear();
-                        return false;
-                    }
-                    logDebug( project,
-                            "Attaching artifact " + artifact.getArtifactId() + " from: " + attachedArtifactFile );
-
-                    attachedArtifactFile = adjustArchiveArtifactVersion( project, originalArtifactVersion, attachedArtifactFile );
-
                     if ( StringUtils.startsWith( attachedArtifact.getClassifier(), GENERATEDSOURCES_PREFIX ) )
                     {
                         // generated sources artifact
+                        final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                                attachedArtifact );
                         restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
                     }
                     else
                     {
+                        Future<File> downloadTask =
+                                createDownloadTask( cacheResult, context, project, attachedArtifact );
                         projectHelper.attachArtifact( project, attachedArtifact.getType(),
-                                attachedArtifact.getClassifier(), attachedArtifactFile.toFile() );
+                                attachedArtifact.getClassifier(), downloadTask );
                     }
                     putChecksum( attachedArtifact, context.getInputInfo().getChecksum() );
                 }
@@ -380,7 +362,7 @@ public class CacheControllerImpl implements CacheController
         catch ( Exception e )
         {
             logError( project, "Cannot restore cache, continuing with normal build.", e );
-            project.getArtifact().setFile( null );
+            project.getArtifact().setFile( (File) null );
             project.getArtifact().setResolved( false );
             return false;
         }
@@ -404,6 +386,34 @@ public class CacheControllerImpl implements CacheController
     //for pom packaging this is done automatically by maven but for jar and other there might be
     //sensitive metadata with previous version. Versions mismatch could lead errors
     private Path adjustArchiveArtifactVersion( MavenProject project, String originalArtifactVersion, Path artifactFile )
+    private Future<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
+                                             ArtifactType artifactType )
+    {
+        return new FutureTask<>( () -> {
+            try
+            {
+                final Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                        artifactType );
+                //we might store in cache artifact which was build with previous version
+                //1.0-SNAPSHOT is kept in cache but real version of project is 2.0
+                //for pom packaging this is done automatically by maven but for jar and other there might be
+                //sensitive metadata with previous version. Versions mismatch could lead errors
+                if ( "jar".equals(artifact.getType()) && !project.getVersion().equals( originalArtifactVersion ) )
+                {
+                    artifactFile = adjustJarArtifactVersion( project.getVersion(), originalArtifactVersion, artifactFile );
+                }
+                logDebug( project,
+                        "Attaching artifact " + artifactType.getArtifactId() + " from: " + artifactFile );
+                return attachedArtifactFile.toFile();
+            }
+            catch ( IOException e )
+            {
+                throw new RuntimeException( "Cannot download artifact: " + artifactType.getArtifactId() );
+            }
+        } );
+    }
+
+    private Path adjustJarArtifactVersion( String currentVersion, String originalArtifactVersion, Path artifactFile )
             throws IOException {
 
         File file = artifactFile.toFile();

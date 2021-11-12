@@ -21,7 +21,9 @@ package org.apache.maven.project;
 
 import java.io.File;
 import java.util.List;
+import java.util.concurrent.Future;
 
+import com.google.common.util.concurrent.Futures;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
@@ -45,6 +47,12 @@ public class DefaultMavenProjectHelper
 
     public void attachArtifact( MavenProject project, String artifactType, String artifactClassifier,
                                 File artifactFile )
+    {
+        attachArtifact(project, artifactType, artifactClassifier, Futures.immediateFuture(artifactFile));
+    }
+
+    public void attachArtifact( MavenProject project, String artifactType, String artifactClassifier,
+                                Future<File> artifactFile )
     {
         String type = artifactType;
 
