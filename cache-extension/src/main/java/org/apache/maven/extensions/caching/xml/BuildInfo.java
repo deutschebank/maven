@@ -32,7 +32,6 @@ import org.apache.maven.extensions.caching.jaxb.ProjectsInputInfoType;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.MojoExecution;
 import org.codehaus.plexus.logging.Logger;
-import org.codehaus.plexus.util.StringUtils;
 
 import javax.xml.datatype.DatatypeConfigurationException;
 import javax.xml.datatype.DatatypeFactory;
@@ -43,7 +42,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.GregorianCalendar;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.apache.maven.extensions.caching.ProjectUtils.isLaterPhase;
 import static org.apache.maven.extensions.caching.ProjectUtils.mojoExecutionKey;
@@ -56,6 +57,7 @@ public class BuildInfo
 
     final BuildInfoType dto;
     CacheSource source;
+    volatile Map<String, CompletedExecutionType> execMap;
 
     public BuildInfo( List<String> goals,
                       ArtifactType artifact,
@@ -148,15 +150,7 @@ public class BuildInfo
 
     private boolean hasCompletedExecution( String mojoExecutionKey )
     {
-        final List<CompletedExecutionType> completedExecutions = dto.getExecutions().getExecution();
-        for ( CompletedExecutionType completedExecution : completedExecutions )
-        {
-            if ( StringUtils.equals( completedExecution.getExecutionKey(), mojoExecutionKey ) )
-            {
-                return true;
-            }
-        }
-        return false;
+        return getExecMap().containsKey( mojoExecutionKey );
     }
 
     @Override
@@ -167,21 +161,28 @@ public class BuildInfo
 
     public CompletedExecutionType findMojoExecutionInfo( MojoExecution mojoExecution )
     {
+        return getExecMap().get( mojoExecutionKey( mojoExecution ) );
+    }
 
+    private Map<String, CompletedExecutionType> getExecMap()
+    {
+        if ( execMap != null )
+        {
+            return execMap;
+        }
         if ( !dto.isSetExecutions() )
         {
-            return null;
+            execMap = Collections.emptyMap();
+            return execMap;
         }
-
-        final List<CompletedExecutionType> executions = dto.getExecutions().getExecution();
-        for ( CompletedExecutionType execution : executions )
-        {
-            if ( StringUtils.equals( execution.getExecutionKey(), mojoExecutionKey( mojoExecution ) ) )
-            {
-                return execution;
-            }
-        }
-        return null;
+        execMap = dto.getExecutions().getExecution().stream()
+                .collect(
+                        Collectors.toMap(
+                                CompletedExecutionType::getExecutionKey,
+                                v -> v
+                        )
+                );
+        return execMap;
     }
 
     public String getCacheImplementationVersion()
