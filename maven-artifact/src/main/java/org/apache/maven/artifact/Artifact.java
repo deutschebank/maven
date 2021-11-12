@@ -22,6 +22,7 @@ package org.apache.maven.artifact;
 import java.io.File;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 
 import org.apache.maven.artifact.handler.ArtifactHandler;
@@ -85,6 +86,8 @@ public interface Artifact
     File getFile();
 
     void setFile( File destination );
+
+    void setFileFuture( Future<File> file );
 
     String getBaseVersion();
 

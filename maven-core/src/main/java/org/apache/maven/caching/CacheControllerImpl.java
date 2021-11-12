@@ -86,6 +86,8 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.regex.Pattern;
 
 import static java.nio.file.StandardOpenOption.CREATE;
@@ -309,15 +311,9 @@ public class CacheControllerImpl implements CacheController
             if ( isNotBlank( artifact.getFileName() ) )
             {
                 // TODO if remote is forced, probably need to refresh or reconcile all files
-                final Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(), artifact );
-                if ( !Files.exists( artifactFile ) )
-                {
-                    logInfo( project, "Missing file for cached build, cannot restore. File: " + artifactFile );
-                    return false;
-                }
-                logDebug( project, "Setting project artifact " + artifact.getArtifactId() + " from: " + artifactFile );
-                project.getArtifact().setFile( artifactFile.toFile() );
-                project.getArtifact().setResolved( true );
+                Future<File> downloadTask = createDownloadTask( cacheResult, context, project, artifact );
+                project.getArtifact().setFileFuture( downloadTask );
+
                 putChecksum( artifact, context.getInputInfo().getChecksum() );
             }
 
@@ -326,29 +322,19 @@ public class CacheControllerImpl implements CacheController
                 attachedArtifact.setVersion( project.getVersion() );
                 if ( isNotBlank( attachedArtifact.getFileName() ) )
                 {
-                    final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
-                            attachedArtifact );
-                    if ( !Files.exists( attachedArtifactFile ) )
-                    {
-                        logInfo( project,
-                                "Missing file for cached build, cannot restore project. File: "
-                                        + attachedArtifactFile );
-                        project.getArtifact().setFile( null );
-                        project.getArtifact().setResolved( false );
-                        project.getAttachedArtifacts().clear();
-                        return false;
-                    }
-                    logDebug( project,
-                            "Attaching artifact " + artifact.getArtifactId() + " from: " + attachedArtifactFile );
                     if ( StringUtils.startsWith( attachedArtifact.getClassifier(), GENERATEDSOURCES_PREFIX ) )
                     {
                         // generated sources artifact
+                        final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                                attachedArtifact );
                         restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
                     }
                     else
                     {
+                        Future<File> downloadTask =
+                                createDownloadTask( cacheResult, context, project, attachedArtifact );
                         projectHelper.attachArtifact( project, attachedArtifact.getType(),
-                                attachedArtifact.getClassifier(), attachedArtifactFile.toFile() );
+                                attachedArtifact.getClassifier(), downloadTask );
                     }
                     putChecksum( attachedArtifact, context.getInputInfo().getChecksum() );
                 }
@@ -364,6 +350,25 @@ public class CacheControllerImpl implements CacheController
         }
 
         return true;
+    }
+
+    private Future<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
+                                             ArtifactType artifactType )
+    {
+        return new FutureTask<>( () -> {
+            try
+            {
+                final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                        artifactType );
+                logDebug( project,
+                        "Attaching artifact " + artifactType.getArtifactId() + " from: " + attachedArtifactFile );
+                return attachedArtifactFile.toFile();
+            }
+            catch ( IOException e )
+            {
+                throw new RuntimeException( "Cannot download artifact: " + artifactType.getArtifactId() );
+            }
+        } );
     }
 
     private void putChecksum( ArtifactType artifact, String projectChecksum )
