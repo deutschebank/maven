@@ -61,4 +61,8 @@ public class KeyUtils
                 + ( artifact.getClassifier() != null ? ":" + artifact.getClassifier() : "" )
                 + ":" + artifact.getVersion();
     }
+
+    public static String makeKey(String groupId, String artifactId) {
+        return groupId + ":" + artifactId;
+    }
 }

@@ -29,16 +29,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.apache.maven.extensions.caching.ProjectUtils.isPomPackaging;
+import static org.apache.maven.extensions.caching.checksum.KeyUtils.makeKey;
 
 @Component(role = RawModelProvider.class)
 public class DefaultRawModelProvider implements RawModelProvider {
 
     @Requirement
     private CacheConfig cacheConfig;
-
-    @Requirement
-    private CacheItemProvider cacheItemProvider;
-
+    private final ConcurrentMap<String, Set<String>> activeProfilesCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Model> modelCache = new ConcurrentHashMap<>();
 
     @Override
@@ -127,7 +125,7 @@ public class DefaultRawModelProvider implements RawModelProvider {
             }
             in.stream().filter(it -> it.getVersion() != null)
                     .forEach(it -> out.putIfAbsent(
-                            makeArtifactId(
+                            makeKey(
                                     normalizeGroupId(it.getGroupId()),
                                     normalizeArtifactId(it.getArtifactId())
                             ), it));
@@ -164,7 +162,7 @@ public class DefaultRawModelProvider implements RawModelProvider {
                         .forEach(plugin -> {
                             String groupId = normalizeGroupId(plugin.getGroupId());
                             String artifactId = normalizeArtifactId(plugin.getArtifactId());
-                            String key = makeArtifactId(groupId, artifactId);
+                            String key = makeKey(groupId, artifactId);
                             Plugin plug = result.computeIfAbsent(key, k -> {
                                 Plugin p = plugin.clone();
                                 p.setArtifactId(artifactId);
@@ -191,7 +189,7 @@ public class DefaultRawModelProvider implements RawModelProvider {
                 String groupId = normalizeGroupId(plugin.getGroupId());
                 String artifactId = normalizeArtifactId(plugin.getArtifactId());
                 List<Dependency> dependencies = plugin.getDependencies();
-                String key = makeArtifactId(groupId, artifactId);
+                String key = makeKey(groupId, artifactId);
                 Plugin plug = out.computeIfAbsent(key, k -> {
                     Plugin p = plugin.clone();
                     p.setArtifactId(artifactId);
@@ -206,9 +204,8 @@ public class DefaultRawModelProvider implements RawModelProvider {
             }
         }
 
-        @SuppressWarnings("unchecked")
         private Stream<Profile> getActiveProfiles(MavenProject project, Model model) {
-            Set<String> activeProfileIds = cacheItemProvider.getCache("activeProfileIds", String.class, Set.class)
+            Set<String> activeProfileIds = activeProfilesCache
                     .computeIfAbsent(project.getId(), k -> project.getActiveProfiles().stream()
                             .map(Profile::getId)
                             .collect(Collectors.toSet()));
@@ -240,7 +237,7 @@ public class DefaultRawModelProvider implements RawModelProvider {
                         Dependency dependency = it.getValue();
                         String groupId = normalizeGroupId(dependency.getGroupId());
                         String artifactId = normalizeArtifactId(dependency.getArtifactId());
-                        String key = makeArtifactId(groupId, artifactId);
+                        String key = makeKey(groupId, artifactId);
                         Dependency removed = dependencyMap.remove(key);
                         if (removed != null) {
                             Dependency clone = removed.clone();
@@ -307,10 +304,6 @@ public class DefaultRawModelProvider implements RawModelProvider {
 
         private boolean isPropertyPlaceholder(@Nullable String property) {
             return property != null && property.startsWith("${") && property.endsWith("}");
-        }
-
-        private String makeArtifactId(String groupId, String artifactId) {
-            return groupId + ":" + artifactId;
         }
 
         private String normalizeGroupId(String gId) {
@@ -414,6 +407,4 @@ public class DefaultRawModelProvider implements RawModelProvider {
     private static int compareDependencies(Dependency d1, Dependency d2) {
         return d1.getArtifactId().compareTo(d2.getArtifactId());
     }
-
-
 }
