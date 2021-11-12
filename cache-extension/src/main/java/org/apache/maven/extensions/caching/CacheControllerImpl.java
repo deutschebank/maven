@@ -149,7 +149,7 @@ public class CacheControllerImpl implements CacheController
     private XmlService xmlService;
 
     @Requirement
-    private CacheItemProvider cacheItemProvider;
+    private RawModelProvider rawModelProvider;
 
     private final ConcurrentMap<String, DigestItemType> artifactDigestByKey = new ConcurrentHashMap<>();
 
@@ -520,8 +520,8 @@ public class CacheControllerImpl implements CacheController
 
             final MavenProjectInput inputs = new MavenProjectInput( project, session, this.projectIndex, cacheConfig,
                     artifactDigestByKey, repoSystem, logger,
-                    localCache, remoteCache, cacheItemProvider );
-            return inputs.calculateChecksum( cacheConfig.getHashFactory() );
+                    localCache, remoteCache );
+            return inputs.calculateChecksum( cacheConfig.getHashFactory(), rawModelProvider.effectiveModel(project) );
         }
         catch ( Exception e )
         {
