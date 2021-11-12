@@ -546,7 +546,7 @@ public class MavenProjectInput
     private List<Dependency> normalizeDependencies(List<Dependency> effectiveDependencies,
                                                    Map<String, Dependency> rawDependencies )
     {
-        if(effectiveDependencies.isEmpty())
+        if(effectiveDependencies.isEmpty() || rawDependencies.isEmpty() )
         {
             return effectiveDependencies;
         }
@@ -1215,6 +1215,11 @@ public class MavenProjectInput
 
     private List<Plugin> normalizePlugins( List<Plugin> plugins, Map<String, Plugin> rawPluginsMap )
     {
+        if ( plugins.isEmpty() || rawPluginsMap.isEmpty() )
+        {
+            return plugins;
+        }
+
         List<Plugin> result = new ArrayList<>(plugins.size());
         for ( Plugin plugin : plugins )
         {
