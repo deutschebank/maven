@@ -32,6 +32,7 @@ import org.apache.maven.project.MavenProject;
 import java.io.File;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.Future;
 
 /**
  * Wraps an active project instance to be able to receive updates from its artifact without affecting the original
@@ -115,6 +116,14 @@ public class ActiveProjectArtifact
 
     /** {@inheritDoc} */
     public void setFile( File destination )
+    {
+        artifact.setFile( destination );
+        project.getArtifact().setFile( destination );
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void setFile( Future<File> destination )
     {
         artifact.setFile( destination );
         project.getArtifact().setFile( destination );

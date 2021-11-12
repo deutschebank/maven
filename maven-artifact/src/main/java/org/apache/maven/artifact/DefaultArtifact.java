@@ -25,7 +25,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 
+import com.google.common.util.concurrent.Futures;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.metadata.ArtifactMetadata;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -54,7 +57,7 @@ public class DefaultArtifact
 
     private volatile String scope;
 
-    private volatile File file;
+    private volatile Future<File> file;
 
     private ArtifactRepository repository;
 
@@ -199,12 +202,25 @@ public class DefaultArtifact
 
     public void setFile( File file )
     {
+        this.file = Futures.immediateFuture(file);
+    }
+
+    public void setFile( Future<File> file )
+    {
         this.file = file;
     }
 
     public File getFile()
     {
-        return file;
+        if ( file == null )
+        {
+            return null;
+        }
+        if ( file instanceof FutureTask && !file.isDone() )
+        {
+            ( (FutureTask<File>) file ).run();
+        }
+        return Futures.getUnchecked( file );
     }
 
     public ArtifactRepository getRepository()

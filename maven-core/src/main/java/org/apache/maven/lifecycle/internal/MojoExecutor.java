@@ -51,6 +51,7 @@ import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.util.StringUtils;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -284,7 +285,7 @@ public class MojoExecutor
         if ( !restored )
         {
             // cleanup partial state
-            project.getArtifact().setFile( null );
+            project.getArtifact().setFile( (File) null );
             project.getArtifact().setResolved( false );
             project.getAttachedArtifacts().clear();
             mojoListener.remove( project );
