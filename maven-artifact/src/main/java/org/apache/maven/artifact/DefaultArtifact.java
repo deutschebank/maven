@@ -222,18 +222,23 @@ public class DefaultArtifact
 
     public File getFile()
     {
-        final Future<File> localRef = file;
-        if ( localRef == null )
+        final Future<File> futureRef = file;
+        if ( futureRef == null )
         {
             return null;
         }
-        if ( localRef instanceof FutureTask && !localRef.isDone() )
+        return getUnchecked( futureRef );
+    }
+
+    private File getUnchecked( Future<File> fileFuture )
+    {
+        if ( fileFuture instanceof FutureTask && !fileFuture.isDone() )
         {
-            ( (FutureTask<File>) file ).run();
+            ( (FutureTask<File>) fileFuture ).run();
         }
         try
         {
-            return file.get();
+            return fileFuture.get();
         }
         catch ( InterruptedException e )
         {
