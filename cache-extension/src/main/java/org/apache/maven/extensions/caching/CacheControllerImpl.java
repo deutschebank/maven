@@ -30,6 +30,8 @@ import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.execution.MojoExecutionEvent;
 import org.apache.maven.extensions.caching.checksum.KeyUtils;
 import org.apache.maven.extensions.caching.checksum.MavenProjectInput;
 import org.apache.maven.extensions.caching.hash.HashAlgorithm;
@@ -49,8 +51,6 @@ import org.apache.maven.extensions.caching.xml.CacheConfig;
 import org.apache.maven.extensions.caching.xml.CacheSource;
 import org.apache.maven.extensions.caching.xml.DtoUtils;
 import org.apache.maven.extensions.caching.xml.XmlService;
-import org.apache.maven.execution.MavenSession;
-import org.apache.maven.execution.MojoExecutionEvent;
 import org.apache.maven.lifecycle.internal.builder.BuilderCommon;
 import org.apache.maven.plugin.MavenPluginManager;
 import org.apache.maven.plugin.Mojo;
@@ -91,12 +91,12 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
 import java.util.regex.Pattern;
 
 import static java.nio.file.StandardOpenOption.CREATE;
@@ -119,7 +119,10 @@ import static org.apache.maven.extensions.caching.checksum.MavenProjectInput.CAC
 @Component( role = CacheController.class )
 public class CacheControllerImpl implements CacheController
 {
-
+    
+    public static final boolean LAZY_ARTIFACTS_DOWNLOAD = Boolean.getBoolean( "remote.cache.lazyArtifactsDownload");
+    public static final boolean SKIP_DOWNLOAD_GENERATED_SOURCES = Boolean.getBoolean("remote.cache.skipDownloadGeneratedSources");
+    
     public static final String FILE_SEPARATOR_SUBST = "_";
     private static final String GENERATEDSOURCES = "generatedsources";
     private static final String GENERATEDSOURCES_PREFIX = GENERATEDSOURCES + FILE_SEPARATOR_SUBST;
@@ -321,7 +324,6 @@ public class CacheControllerImpl implements CacheController
         final MavenProject project = context.getProject();
 
         final ArtifactType artifact = buildInfo.getArtifact();
-        String originalArtifactVersion = artifact.getVersion();
         artifact.setVersion( project.getVersion() );
 
         try
@@ -329,7 +331,7 @@ public class CacheControllerImpl implements CacheController
             if ( isNotBlank( artifact.getFileName() ) )
             {
                 logDebug( project, "Setting lazy project artifact " + artifact.getArtifactId() );
-                Future<File> downloadTask = createDownloadTask( cacheResult, context, project, artifact );
+                FutureTask<File> downloadTask = createDownloadTask( cacheResult, context, project, artifact );
                 project.getArtifact().setFile( downloadTask );
                 project.getArtifact().setResolved( true );
 
@@ -344,9 +346,14 @@ public class CacheControllerImpl implements CacheController
                     if ( StringUtils.startsWith( attachedArtifact.getClassifier(), GENERATEDSOURCES_PREFIX ) )
                     {
                         // generated sources artifact
-                        final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
-                                attachedArtifact );
-                        restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
+                        if ( !SKIP_DOWNLOAD_GENERATED_SOURCES )
+                        {
+
+                            final Path generatedSourcesBundle =
+                                    localCache.getArtifactFile( context, cacheResult.getSource(),
+                                            attachedArtifact );
+                            restoreGeneratedSources( attachedArtifact, generatedSourcesBundle, project );
+                        }
                     }
                     else
                     {
@@ -381,48 +388,47 @@ public class CacheControllerImpl implements CacheController
                 || fileName.endsWith(".war") || fileName.endsWith(".ear");
     }
 
-    //we might store in cache artifact which was build with previous version
-    //1.0-SNAPSHOT is kept in cache but real version of project is 2.0
-    //for pom packaging this is done automatically by maven but for jar and other there might be
-    //sensitive metadata with previous version. Versions mismatch could lead errors
-    private Path adjustArchiveArtifactVersion( MavenProject project, String originalArtifactVersion, Path artifactFile )
-    private Future<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
+    private FutureTask<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
                                              ArtifactType artifactType )
     {
-        return new FutureTask<>( () -> {
+        final FutureTask<File> downloadTask = new FutureTask<>( () -> {
             try
             {
-                final Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
                         artifactType );
+                logDebug( project,"Downloaded artifact " + artifactType.getArtifactId() + " to: " + artifactFile );
                 //we might store in cache artifact which was build with previous version
                 //1.0-SNAPSHOT is kept in cache but real version of project is 2.0
                 //for pom packaging this is done automatically by maven but for jar and other there might be
                 //sensitive metadata with previous version. Versions mismatch could lead errors
-                if ( "jar".equals(artifact.getType()) && !project.getVersion().equals( originalArtifactVersion ) )
-                {
-                    artifactFile = adjustJarArtifactVersion( project.getVersion(), originalArtifactVersion, artifactFile );
-                }
-                logDebug( project,
-                        "Attaching artifact " + artifactType.getArtifactId() + " from: " + artifactFile );
-                return attachedArtifactFile.toFile();
+                String cachedVersion = artifactType.getVersion();
+                artifactFile = adjustJarArtifactVersion( project.getVersion(), cachedVersion, artifactFile );
+                
+                return artifactFile.toFile();
             }
             catch ( IOException e )
             {
                 throw new RuntimeException( "Cannot download artifact: " + artifactType.getArtifactId() );
             }
         } );
+
+        if ( !LAZY_ARTIFACTS_DOWNLOAD )
+        {
+            downloadTask.run();
+        }
+
+        return downloadTask;
     }
 
     private Path adjustJarArtifactVersion( String currentVersion, String originalArtifactVersion, Path artifactFile )
             throws IOException {
 
         File file = artifactFile.toFile();
-        if ( project.getVersion().equals( originalArtifactVersion ) || !isArchive( file ) )
+        if ( currentVersion.equals( originalArtifactVersion ) || !isArchive( file ) )
         {
             return artifactFile;
         }
-
-        String currentVersion = project.getVersion();
+        
         File tmpJarFile = File.createTempFile( artifactFile.toFile().getName(),
                 '.'+FilenameUtils.getExtension( file.getName() ) );
         tmpJarFile.deleteOnExit();

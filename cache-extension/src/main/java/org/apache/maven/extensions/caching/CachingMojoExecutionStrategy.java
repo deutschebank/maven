@@ -42,6 +42,7 @@ import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.util.ReflectionUtils;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -201,7 +202,7 @@ public class CachingMojoExecutionStrategy implements MojoExecutionStrategy
         if ( !restored )
         {
             // cleanup partial state
-            project.getArtifact().setFile( null );
+            project.getArtifact().setFile( (File) null );
             project.getArtifact().setResolved( false );
             mojoListener.remove( project );
             // build as usual
