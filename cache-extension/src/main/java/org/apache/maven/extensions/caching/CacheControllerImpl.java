@@ -396,7 +396,11 @@ public class CacheControllerImpl implements CacheController
             {
                 Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
                         artifactType );
-                logDebug( project,"Downloaded artifact " + artifactType.getArtifactId() + " to: " + artifactFile );
+                
+                logDebug( project,
+                        "Downloaded artifact " + artifactType.getArtifactId() + " content to: " + artifactFile );
+                
+                
                 //we might store in cache artifact which was build with previous version
                 //1.0-SNAPSHOT is kept in cache but real version of project is 2.0
                 //for pom packaging this is done automatically by maven but for jar and other there might be
