@@ -644,7 +644,6 @@ under the License.
             <phase>validate</phase>
             <id>ensure-no-sonatype-cipher-and-sec-dispatcher</id>
             <configuration>
-              <skip>true</skip>
               <rules>
                 <bannedDependencies>
                   <excludes>
