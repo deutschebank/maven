@@ -110,7 +110,9 @@ import static org.apache.maven.caching.checksum.MavenProjectInput.CACHE_IMPLMENT
 @Component( role = CacheController.class )
 public class CacheControllerImpl implements CacheController
 {
-
+    
+    public static final boolean LAZY_ARTIFACTS_DOWNLOAD_PARAM = Boolean.getBoolean( "remote.cache.lazyArtifactsDownload");
+    public static final boolean SKIP_DOWNLOAD_GENERATED_SOURCES_PARAM = Boolean.getBoolean("remote.cache.skipDownloadGeneratedSources");
     public static final String FILE_SEPARATOR_SUBST = "_";
     private static final String GENERATEDSOURCES = "generatedsources";
     private static final String GENERATEDSOURCES_PREFIX = GENERATEDSOURCES + FILE_SEPARATOR_SUBST;
@@ -311,8 +313,10 @@ public class CacheControllerImpl implements CacheController
             if ( isNotBlank( artifact.getFileName() ) )
             {
                 // TODO if remote is forced, probably need to refresh or reconcile all files
-                Future<File> downloadTask = createDownloadTask( cacheResult, context, project, artifact );
+                FutureTask<File> downloadTask = createDownloadTask( cacheResult, context, project, artifact );
+
                 project.getArtifact().setFile( downloadTask );
+//                project.getArtifact().setResolved( true );
 
                 putChecksum( artifact, context.getInputInfo().getChecksum() );
             }
@@ -325,9 +329,14 @@ public class CacheControllerImpl implements CacheController
                     if ( StringUtils.startsWith( attachedArtifact.getClassifier(), GENERATEDSOURCES_PREFIX ) )
                     {
                         // generated sources artifact
-                        final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
-                                attachedArtifact );
-                        restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
+                        if ( !SKIP_DOWNLOAD_GENERATED_SOURCES_PARAM )
+                        {
+
+                            final Path attachedArtifactFile =
+                                    localCache.getArtifactFile( context, cacheResult.getSource(),
+                                            attachedArtifact );
+                            restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
+                        }
                     }
                     else
                     {
@@ -335,6 +344,7 @@ public class CacheControllerImpl implements CacheController
                                 createDownloadTask( cacheResult, context, project, attachedArtifact );
                         projectHelper.attachArtifact( project, attachedArtifact.getType(),
                                 attachedArtifact.getClassifier(), downloadTask );
+
                     }
                     putChecksum( attachedArtifact, context.getInputInfo().getChecksum() );
                 }
@@ -352,10 +362,10 @@ public class CacheControllerImpl implements CacheController
         return true;
     }
 
-    private Future<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
+    private FutureTask<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
                                              ArtifactType artifactType )
     {
-        return new FutureTask<>( () -> {
+        final FutureTask<File> downloadTask = new FutureTask<>( () -> {
             try
             {
                 final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
@@ -369,6 +379,13 @@ public class CacheControllerImpl implements CacheController
                 throw new RuntimeException( "Cannot download artifact: " + artifactType.getArtifactId() );
             }
         } );
+
+        if ( !LAZY_ARTIFACTS_DOWNLOAD_PARAM )
+        {
+            downloadTask.run();
+        }
+        
+        return downloadTask;
     }
 
     private void putChecksum( ArtifactType artifact, String projectChecksum )
