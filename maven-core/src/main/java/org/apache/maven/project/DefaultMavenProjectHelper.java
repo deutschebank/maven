@@ -21,6 +21,8 @@ package org.apache.maven.project;
 
 import java.io.File;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 import javax.inject.Inject;
 import javax.inject.Named;
@@ -54,6 +56,12 @@ public class DefaultMavenProjectHelper
     public void attachArtifact( MavenProject project, String artifactType, String artifactClassifier,
                                 File artifactFile )
     {
+        attachArtifact(project, artifactType, artifactClassifier, CompletableFuture.completedFuture(artifactFile));
+    }
+    
+    public void attachArtifact( MavenProject project, String artifactType, String artifactClassifier,
+                                Future<File> artifactFile )
+    {
         ArtifactHandler handler = null;
 
         if ( artifactType != null )
@@ -68,7 +76,7 @@ public class DefaultMavenProjectHelper
 
         Artifact artifact = new AttachedArtifact( project.getArtifact(), artifactType, artifactClassifier, handler );
 
-        artifact.setFile( artifactFile );
+        artifact.setLazyFile( artifactFile );
         artifact.setResolved( true );
 
         attachArtifact( project, artifact );
