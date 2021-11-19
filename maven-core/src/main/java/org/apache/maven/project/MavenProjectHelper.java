@@ -21,6 +21,7 @@ package org.apache.maven.project;
 
 import java.io.File;
 import java.util.List;
+import java.util.concurrent.Future;
 
 /**
  * Convenience interface for plugins to add or replace artifacts and resources on projects.
@@ -53,6 +54,15 @@ public interface MavenProjectHelper
      * @param artifactFile the file for the artifact.
      */
     void attachArtifact( MavenProject project, String artifactType, String artifactClassifier, File artifactFile );
+
+    /**
+     * Add or replace lazy artifact to the current project.
+     * @param project the project reference.
+     * @param artifactType the type (e.g. jar) or null.
+     * @param artifactClassifier the classifier or null.
+     * @param artifactFuture the file for the artifact.
+     */
+    void attachArtifact( MavenProject project, String artifactType, String artifactClassifier, Future<File> artifactFuture );
 
     /**
      * Add a resource directory to the project.

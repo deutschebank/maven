@@ -38,8 +38,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -297,24 +300,17 @@ public class CacheControllerImpl implements CacheController
         final CacheContext context = cacheResult.getContext();
         final MavenProject project = context.getProject();
 
-        final Artifact artifact = build.getArtifact();
-        artifact.setVersion( project.getVersion() );
-
         try
         {
-            File file = null;
-            List<ArtifactToAttach> artifacts = new ArrayList<>();
-            if ( isNotBlank( artifact.getFileName() ) )
+            Future<File> file = null;
+            List<RestoredArtifact> artifacts = new ArrayList<>();
+
+            if ( build.getArtifact() != null && isNotBlank( build.getArtifact().getFileName() ) )
             {
+                final Artifact artifact = build.getArtifact();
+                artifact.setVersion( project.getVersion() );
                 // TODO if remote is forced, probably need to refresh or reconcile all files
-                final Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(), artifact );
-                if ( !Files.exists( artifactFile ) )
-                {
-                    LOGGER.info( "Missing file for cached build, cannot restore. File: {}", artifactFile );
-                    return false;
-                }
-                LOGGER.debug( "Setting project artifact {} from {}", artifact.getArtifactId(), artifactFile );
-                file = artifactFile.toFile();
+                file = createDownloadTask( cacheResult, context, project, artifact );
                 putChecksum( artifact, context.getInputInfo().getChecksum() );
             }
 
@@ -323,23 +319,22 @@ public class CacheControllerImpl implements CacheController
                 attachedArtifact.setVersion( project.getVersion() );
                 if ( isNotBlank( attachedArtifact.getFileName() ) )
                 {
-                    final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
-                            attachedArtifact );
-                    if ( !Files.exists( attachedArtifactFile ) )
-                    {
-                        throw new FileNotFoundException(
-                                "Missing file for cached build, cannot restore. File: " + attachedArtifactFile );
-                    }
-                    LOGGER.debug( "Attaching artifact {} from {}",
-                            artifact.getArtifactId(), attachedArtifactFile );
                     if ( StringUtils.startsWith( attachedArtifact.getClassifier(), GENERATEDSOURCES_PREFIX ) )
                     {
-                        // generated sources artifact
-                        restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
+                        // restoring generated sources might be unnecessary in CI, could be disabled for performance reasons
+                        if ( cacheConfig.isRestoreGeneratedSources() )
+                        {
+                            // generated sources artifact
+                            final Path attachedArtifactFile = localCache.getArtifactFile( context,
+                                    cacheResult.getSource(), attachedArtifact );
+                            restoreGeneratedSources( attachedArtifact, attachedArtifactFile, project );
+                        }
                     }
                     else
                     {
-                        artifacts.add( new ArtifactToAttach( attachedArtifact, attachedArtifactFile ) );
+                        Future<File> downloadTask =
+                                createDownloadTask( cacheResult, context, project, attachedArtifact );
+                        artifacts.add( new RestoredArtifact( attachedArtifact, downloadTask ) );
                     }
                     putChecksum( attachedArtifact, context.getInputInfo().getChecksum() );
                 }
@@ -348,7 +343,7 @@ public class CacheControllerImpl implements CacheController
             // in which case, the project is unmodified and we continue with normal build.
             if ( file != null )
             {
-                project.getArtifact().setFile( file );
+                project.getArtifact().setLazyFile( file );
                 project.getArtifact().setResolved( true );
             }
             artifacts.forEach( a -> projectHelper.attachArtifact( project, a.type, a.classifier, a.file ) );
@@ -359,6 +354,35 @@ public class CacheControllerImpl implements CacheController
             LOGGER.error( "Cannot restore cache, continuing with normal build.", e );
             return false;
         }
+    }
+
+    private Future<File> createDownloadTask( CacheResult cacheResult, CacheContext context, MavenProject project,
+                                             Artifact artifact )
+    {
+        final FutureTask<File> downloadTask = new FutureTask<>( () -> {
+            try
+            {
+                LOGGER.debug( "Downloading artifact " + artifact.getArtifactId() );
+                final Path attachedArtifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                        artifact );
+                if ( !Files.exists( attachedArtifactFile ) )
+                {
+                    throw new FileNotFoundException(
+                            "Missing file for cached build, cannot restore. File: " + attachedArtifactFile );
+                }
+                LOGGER.debug( "Downloaded artifact " + artifact.getArtifactId() + " to: " + attachedArtifactFile );
+                return attachedArtifactFile.toFile();
+            }
+            catch ( IOException e )
+            {
+                throw new RuntimeException( "Cannot download artifact: " + artifact.getArtifactId(), e );
+            }
+        } );
+        if ( !cacheConfig.isLazyRestore() )
+        {
+            downloadTask.run();
+        }
+        return downloadTask;
     }
 
     private void putChecksum( Artifact artifact, String projectChecksum )
@@ -908,22 +932,22 @@ public class CacheControllerImpl implements CacheController
         return true;
     }
 
-    private static class ArtifactToAttach
+    private static class RestoredArtifact
     {
         private final String type;
         private final String classifier;
-        private final File file;
+        private final Future<File> file;
 
-        ArtifactToAttach( String type, String classifier, File file )
+        RestoredArtifact( String type, String classifier, Future<File> file )
         {
             this.type = type;
             this.classifier = classifier;
             this.file = file;
         }
 
-        ArtifactToAttach( Artifact attachedArtifact, Path attachedArtifactFile )
+        RestoredArtifact( Artifact attachedArtifact, Future<File> artifactFile )
         {
-            this( attachedArtifact.getType(), attachedArtifact.getClassifier(), attachedArtifactFile.toFile() );
+            this( attachedArtifact.getType(), attachedArtifact.getClassifier(), artifactFile );
         }
     }
 

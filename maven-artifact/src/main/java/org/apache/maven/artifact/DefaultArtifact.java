@@ -25,7 +25,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
+import org.apache.commons.lang3.concurrent.ConcurrentException;
+import org.apache.commons.lang3.concurrent.ConcurrentUtils;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.metadata.ArtifactMetadata;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -54,7 +60,7 @@ public class DefaultArtifact
 
     private volatile String scope;
 
-    private volatile File file;
+    private volatile Future<File> file;
 
     private ArtifactRepository repository;
 
@@ -199,12 +205,67 @@ public class DefaultArtifact
 
     public void setFile( File file )
     {
-        this.file = file;
+        this.file = CompletableFuture.completedFuture( file );
+    }
+
+    public void setLazyFile( Future<File> futureDestination )
+    {
+        this.file = futureDestination;
     }
 
     public File getFile()
     {
-        return file;
+        if ( file == null )
+        {
+            return null;
+        }
+
+        // TODO need logging here
+        if ( !file.isDone() )
+        {
+            // attempt to retrieve artifact by caller instead of wait 
+            if ( file instanceof Runnable )
+            {
+                try
+                {
+                    ( (Runnable) file ).run();
+                }
+                catch ( RuntimeException e )
+                {
+                    throw new InvalidArtifactRTException( groupId, artifactId, version, type,
+                            "Error retrieving artifact file", e );
+                }
+            }
+            else if ( file instanceof Callable )
+            {
+                try
+                {
+                    ( (Callable) file ).call();
+                }
+                catch ( Exception e )
+                {
+                    throw new InvalidArtifactRTException( groupId, artifactId, version, type,
+                            "Error retrieving artifact file", e );
+                }
+            }
+        }
+
+        try
+        {
+            return file.get();
+        }
+        catch ( InterruptedException e )
+        {
+            Thread.currentThread().interrupt();
+            throw new InvalidArtifactRTException( groupId, artifactId, version, type,
+                    "Interrupted while retrieving artifact file" );
+        }
+        catch ( ExecutionException e )
+        {
+            final ConcurrentException cause = ConcurrentUtils.extractCause( e );
+            throw new InvalidArtifactRTException( groupId, artifactId, version, type, "Error retrieving artifact file",
+                    cause );
+        }
     }
 
     public ArtifactRepository getRepository()
