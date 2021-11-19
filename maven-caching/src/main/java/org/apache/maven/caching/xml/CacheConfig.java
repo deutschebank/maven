@@ -105,4 +105,8 @@ public interface CacheConfig
     boolean isBaselineDiffEnabled();
 
     String getBaselineCacheUrl();
+
+    boolean isLazyRestore();
+
+    boolean isRestoreGeneratedSources();
 }
