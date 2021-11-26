@@ -50,8 +50,10 @@ import org.apache.maven.caching.xml.config.ExecutionIdsList;
 import org.apache.maven.caching.xml.config.GoalReconciliation;
 import org.apache.maven.caching.xml.config.GoalsList;
 import org.apache.maven.caching.xml.config.Include;
+import org.apache.maven.caching.xml.config.Input;
 import org.apache.maven.caching.xml.config.Local;
 import org.apache.maven.caching.xml.config.MultiModule;
+import org.apache.maven.caching.xml.config.PathSet;
 import org.apache.maven.caching.xml.config.PluginConfigurationScan;
 import org.apache.maven.caching.xml.config.PluginSet;
 import org.apache.maven.caching.xml.config.PropertyName;
@@ -130,9 +132,9 @@ public class CacheConfigImpl implements org.apache.maven.caching.xml.CacheConfig
 
                 if ( !Files.exists( configPath ) )
                 {
-                    LOGGER.info( "Cache configuration is not available at configured path {}, cache is disabled",
-                            configPath );
-                    state = CacheState.DISABLED;
+                    LOGGER.info( "Cache configuration is not available at configured path {}, "
+                            + "cache is enabled with defaults", configPath );
+                    cacheConfig = new CacheConfig();
                 }
                 else
                 {
@@ -140,38 +142,66 @@ public class CacheConfigImpl implements org.apache.maven.caching.xml.CacheConfig
                     {
                         LOGGER.info( "Loading cache configuration from {}", configPath );
                         cacheConfig = xmlService.loadCacheConfig( configPath.toFile() );
+                        fillWithDefaults( cacheConfig );
                     }
                     catch ( Exception e )
                     {
                         throw new IllegalArgumentException(
                                 "Cannot initialize cache because xml config is not valid or not available", e );
                     }
+                }
+                fillWithDefaults( cacheConfig );
 
-                    if ( !cacheConfig.getConfiguration().isEnabled() )
+                if ( !cacheConfig.getConfiguration().isEnabled() )
+                {
+                    state = CacheState.DISABLED;
+                }
+                else
+                {
+                    String hashAlgorithm = null;
+                    try
                     {
-                        state = CacheState.DISABLED;
+                        hashAlgorithm = getConfiguration().getHashAlgorithm();
+                        hashFactory = HashFactory.of( hashAlgorithm );
+                        LOGGER.info( "Using {} hash algorithm for cache", hashAlgorithm );
                     }
-                    else
+                    catch ( Exception e )
                     {
-                        String hashAlgorithm = null;
-                        try
-                        {
-                            hashAlgorithm = getConfiguration().getHashAlgorithm();
-                            hashFactory = HashFactory.of( hashAlgorithm );
-                            LOGGER.info( "Using {} hash algorithm for cache", hashAlgorithm );
-                        }
-                        catch ( Exception e )
-                        {
-                            throw new IllegalArgumentException( "Unsupported hashing algorithm: " + hashAlgorithm, e );
-                        }
+                        throw new IllegalArgumentException( "Unsupported hashing algorithm: " + hashAlgorithm, e );
+                    }
 
-                        excludePatterns = compileExcludePatterns();
-                        state = CacheState.INITIALIZED;
-                    }
+                    excludePatterns = compileExcludePatterns();
+                    state = CacheState.INITIALIZED;
                 }
             }
         }
         return state;
+    }
+
+    private void fillWithDefaults( CacheConfig cacheConfig )
+    {
+        if ( cacheConfig.getConfiguration() == null )
+        {
+            cacheConfig.setConfiguration( new Configuration() );
+        }
+        Configuration configuration = cacheConfig.getConfiguration();
+        if ( configuration.getLocal() == null )
+        {
+            configuration.setLocal( new Local() );
+        }
+        if ( configuration.getRemote() == null )
+        {
+            configuration.setRemote( new Remote() );
+        }
+        if ( cacheConfig.getInput() == null )
+        {
+            cacheConfig.setInput( new Input() );
+        }
+        Input input = cacheConfig.getInput();
+        if ( input.getGlobal() == null )
+        {
+            input.setGlobal( new PathSet() );
+        }
     }
 
     @Nonnull
@@ -465,7 +495,7 @@ public class CacheConfigImpl implements org.apache.maven.caching.xml.CacheConfig
     public boolean isRemoteCacheEnabled()
     {
         checkInitializedState();
-        return getRemote().isEnabled();
+        return getRemote().getUrl() != null && getRemote().isEnabled();
     }
 
     @Override
@@ -511,6 +541,13 @@ public class CacheConfigImpl implements org.apache.maven.caching.xml.CacheConfig
     {
         final String restoreGeneratedSources = getProperty( RESTORE_GENERATED_SOURCES_PROPERTY_NAME, "true" );
         return Boolean.parseBoolean( restoreGeneratedSources );
+    }
+
+    @Override
+    public String getId()
+    {
+        checkInitializedState();
+        return getRemote().getId();
     }
 
     @Override

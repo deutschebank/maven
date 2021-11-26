@@ -382,7 +382,7 @@ public class CacheControllerImpl implements CacheController
         }
         catch ( Exception e )
         {
-            LOGGER.error( "Cannot restore cache, continuing with normal build.", e );
+            LOGGER.debug( "Cannot restore cache, continuing with normal build.", e );
             return false;
         }
     }
@@ -494,7 +494,7 @@ public class CacheControllerImpl implements CacheController
     private static void replaceEntry( JarFile jarFile, JarEntry entry,
                                       String toReplace, String replacement, JarOutputStream jos ) throws IOException
     {
-        String fullManifest = IOUtils.toString( jarFile.getInputStream( entry ), StandardCharsets.UTF_8 );
+        String fullManifest = IOUtils.toString( jarFile.getInputStream( entry ), StandardCharsets.UTF_8.name() );
         String modified = fullManifest.replaceAll( toReplace, replacement );
 
         byte[] bytes = modified.getBytes( StandardCharsets.UTF_8 );
@@ -519,23 +519,16 @@ public class CacheControllerImpl implements CacheController
     {
         final FutureTask<File> downloadTask = new FutureTask<>( () ->
         {
-            try
+            LOGGER.debug( "Downloading artifact {}", artifact.getArtifactId() );
+            final Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
+                    artifact );
+            if ( !Files.exists( artifactFile ) )
             {
-                LOGGER.debug( "Downloading artifact {}", artifact.getArtifactId() );
-                final Path artifactFile = localCache.getArtifactFile( context, cacheResult.getSource(),
-                        artifact );
-                if ( !Files.exists( artifactFile ) )
-                {
-                    throw new FileNotFoundException(
-                            "Missing file for cached build, cannot restore. File: " + artifactFile );
-                }
-                LOGGER.debug( "Downloaded artifact " + artifact.getArtifactId() + " to: " + artifactFile );
-                return adjustArchiveArtifactVersion( project, originalVersion, artifactFile ).toFile();
+                throw new FileNotFoundException(
+                        "Missing file for cached build, cannot restore. File: " + artifactFile );
             }
-            catch ( IOException e )
-            {
-                throw new RuntimeException( "Cannot download artifact: " + artifact.getArtifactId(), e );
-            }
+            LOGGER.debug( "Downloaded artifact " + artifact.getArtifactId() + " to: " + artifactFile );
+            return adjustArchiveArtifactVersion( project, originalVersion, artifactFile ).toFile();
         } );
         if ( !cacheConfig.isLazyRestore() )
         {

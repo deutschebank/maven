@@ -19,6 +19,7 @@ package org.apache.maven.caching;
  * under the License.
  */
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -47,12 +48,14 @@ import org.apache.maven.caching.xml.Build;
 import org.apache.maven.caching.xml.CacheConfig;
 import org.apache.maven.caching.xml.CacheSource;
 import org.apache.maven.caching.xml.XmlService;
+import org.apache.maven.caching.xml.build.Artifact;
 import org.apache.maven.caching.xml.report.CacheReport;
 import org.apache.maven.caching.xml.report.ProjectReport;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
+import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.StreamingWagon;
 import org.apache.maven.wagon.Wagon;
 import org.apache.maven.wagon.WagonException;
@@ -61,6 +64,8 @@ import org.apache.maven.wagon.proxy.ProxyInfo;
 import org.apache.maven.wagon.proxy.ProxyInfoProvider;
 import org.apache.maven.wagon.repository.Repository;
 import org.apache.maven.wagon.repository.RepositoryPermissions;
+import org.codehaus.plexus.component.repository.exception.ComponentLifecycleException;
+import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.aether.ConfigurationProperties;
 import org.eclipse.aether.RepositoryException;
 import org.eclipse.aether.RepositorySystemSession;
@@ -127,7 +132,8 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
 
         cacheConfig.initialize();
 
-        RemoteRepository repo = new RemoteRepository.Builder( "cache", "cache", cacheConfig.getUrl() ).build();
+        RemoteRepository repo = new RemoteRepository.Builder(
+                cacheConfig.getId(), "cache", cacheConfig.getUrl() ).build();
         RemoteRepository mirror = session.getMirrorSelector().getMirror( repo );
         RemoteRepository repoOrMirror = mirror != null ? mirror : repo;
         Proxy proxy = session.getProxySelector().getProxy( repoOrMirror );
@@ -311,17 +317,15 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
     public Optional<Build> findBuild( CacheContext context ) throws IOException
     {
         final String resourceUrl = doGetResourceUrl( context, BUILDINFO_XML );
-        return getResourceContent( resourceUrl )
+        return doGet( resourceUrl )
                 .map( content -> new Build( xmlService.loadBuild( content ), CacheSource.REMOTE ) );
     }
 
     @Override
-    @Nonnull
-    public Optional<byte[]> getArtifactContent( CacheContext context,
-                                                org.apache.maven.caching.xml.build.Artifact artifact )
+    public boolean getArtifactContent( CacheContext context, Artifact artifact, Path target )
             throws IOException
     {
-        return getResourceContent( doGetResourceUrl( context, artifact.getFileName() ) );
+        return doGet( doGetResourceUrl( context, artifact.getFileName() ), target );
     }
 
     @Override
@@ -329,7 +333,7 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
             throws IOException
     {
         final String resourceUrl = doGetResourceUrl( cacheResult.getContext(), BUILDINFO_XML );
-        putToRemoteCache( xmlService.toBytes( build.getDto() ), resourceUrl );
+        doPut( resourceUrl, xmlService.toBytes( build.getDto() ) );
     }
 
 
@@ -338,7 +342,7 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
     {
         MavenProject rootProject = session.getTopLevelProject();
         final String resourceUrl = doGetResourceUrl( CACHE_REPORT_XML, rootProject, buildId );
-        putToRemoteCache( xmlService.toBytes( cacheReport ), resourceUrl );
+        doPut( resourceUrl, xmlService.toBytes( cacheReport ) );
     }
 
     @Override
@@ -346,7 +350,7 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
                                   org.apache.maven.artifact.Artifact artifact ) throws IOException
     {
         final String resourceUrl = doGetResourceUrl( cacheResult.getContext(), CacheUtils.normalizedName( artifact ) );
-        putToRemoteCache( artifact.getFile().toPath(), resourceUrl );
+        doPut( resourceUrl, artifact.getFile().toPath() );
     }
 
     @Override
@@ -375,61 +379,50 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
     }
 
     @Override
-    @Nonnull
-    public Optional<byte[]> getResourceContent( String resourceUrl ) throws IOException
-    {
-        return doGetResource( resourceUrl );
-    }
-
-    @Override
     public Optional<Build> findBaselineBuild( MavenProject project )
     {
-        final Optional<List<ProjectReport>> cachedProjectsHolder = findCacheInfo()
+        Optional<List<ProjectReport>> cachedProjectsHolder = findCacheInfo()
                 .map( CacheReport::getProjects );
+
         if ( !cachedProjectsHolder.isPresent() )
         {
             return Optional.empty();
         }
 
-        Optional<ProjectReport> cachedProjectHolder = Optional.empty();
-        for ( ProjectReport p : cachedProjectsHolder.get() )
+        final List<ProjectReport> projects = cachedProjectsHolder.get();
+        final Optional<ProjectReport> projectReportHolder = projects.stream().filter( p ->
+                project.getArtifactId().equals( p.getArtifactId() )
+                        && project.getGroupId().equals( p.getGroupId() ) ).findFirst();
+
+        if ( !projectReportHolder.isPresent() )
         {
-            if ( project.getArtifactId().equals( p.getArtifactId() )
-                    && project.getGroupId().equals( p.getGroupId() ) )
-            {
-                cachedProjectHolder = Optional.of( p );
-                break;
-            }
+            return Optional.empty();
         }
 
-        if ( cachedProjectHolder.isPresent() )
-        {
-            String url;
-            final ProjectReport projectReport = cachedProjectHolder.get();
-            if ( projectReport.getUrl() != null )
-            {
-                url = cachedProjectHolder.get().getUrl();
-                LOGGER.info( "Retrieving baseline buildinfo: {}", projectReport.getUrl() );
-            }
-            else
-            {
-                url = doGetResourceUrl( BUILDINFO_XML, project, projectReport.getChecksum() );
-                LOGGER.info( "Baseline project record doesn't have url, trying default location" );
-            }
+        final ProjectReport projectReport = projectReportHolder.get();
 
-            try
-            {
-                return getResourceContent( url )
-                        .map( content -> new Build( xmlService.loadBuild( content ), CacheSource.REMOTE ) );
-            }
-            catch ( Exception e )
-            {
-                LOGGER.warn( "Error restoring baseline build at url: {}, skipping diff",
-                        projectReport.getUrl() );
-                return Optional.empty();
-            }
+        String url;
+        if ( projectReport.getUrl() != null )
+        {
+            url = projectReport.getUrl();
+            LOGGER.info( "Retrieving baseline buildinfo: {}", url );
         }
-        return Optional.empty();
+        else
+        {
+            url = doGetResourceUrl( BUILDINFO_XML, project, projectReport.getChecksum() );
+            LOGGER.info( "Baseline project record doesn't have url, trying default location {}", url );
+        }
+
+        try
+        {
+            return doGet( url )
+                    .map( content -> new Build( xmlService.loadBuild( content ), CacheSource.REMOTE ) );
+        }
+        catch ( Exception e )
+        {
+            LOGGER.warn( "Error restoring baseline build at url: {}, skipping diff", url, e );
+            return Optional.empty();
+        }
     }
 
     private Optional<CacheReport> findCacheInfo()
@@ -440,7 +433,7 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
             try
             {
                 LOGGER.info( "Downloading baseline cache report from: {}", cacheConfig.getBaselineCacheUrl() );
-                report = getResourceContent( cacheConfig.getBaselineCacheUrl() ).map( xmlService::loadCacheReport );
+                return doGet( cacheConfig.getBaselineCacheUrl() ).map( xmlService::loadCacheReport );
             }
             catch ( Exception e )
             {
@@ -453,7 +446,7 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
         return report;
     }
 
-    private void putToRemoteCache( Path path, String url ) throws IOException
+    private void doPut( String url, Path path ) throws IOException
     {
         try
         {
@@ -473,9 +466,8 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
         }
     }
 
-    private void putToRemoteCache( byte[] data, String resourceName ) throws IOException
+    private void doPut( String url, byte[] data ) throws IOException
     {
-        /*
         try
         {
             Wagon wagon = pollWagon();
@@ -484,15 +476,15 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
                 if ( wagon instanceof StreamingWagon )
                 {
                     ( ( StreamingWagon ) wagon ).putFromStream(
-                            new ByteArrayInputStream( data ), resourceName, data.length, 0 );
+                            new ByteArrayInputStream( data ), url, data.length, 0 );
                 }
                 else
                 {
-                    File temp = File.createTempFile( "maven-caching-", ".temp" );
+                    File temp = createTempFile();
                     try
                     {
                         Files.write( temp.toPath(), data );
-                        wagon.put( temp, resourceName );
+                        wagon.put( temp, url );
                     }
                     finally
                     {
@@ -507,30 +499,11 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
         }
         catch ( Exception e )
         {
-            throw new IOException( "Unable to upload resource " + resourceName, e );
-        }
-
-         */
-        File temp = File.createTempFile( "maven-caching-", ".temp" );
-        try
-        {
-            Files.write( temp.toPath(), data );
-            putToRemoteCache( temp.toPath(), resourceName );
-        }
-        finally
-        {
-            delete( temp );
+            throw new IOException( "Unable to upload resource " + url, e );
         }
     }
 
-    @SuppressWarnings( "ResultOfMethodCallIgnored" )
-    private void delete( File temp )
-    {
-        temp.delete();
-    }
-
-    @Nonnull
-    private Optional<byte[]> doGetResource( String resourceName ) throws IOException
+    private Optional<byte[]> doGet( String url ) throws IOException
     {
         try
         {
@@ -540,15 +513,15 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
                 if ( wagon instanceof StreamingWagon )
                 {
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    ( ( StreamingWagon ) wagon ).getToStream( resourceName, baos );
+                    ( ( StreamingWagon ) wagon ).getToStream( url, baos );
                     return Optional.of( baos.toByteArray() );
                 }
                 else
                 {
-                    File temp = File.createTempFile( "maven-caching-", ".temp" );
+                    File temp = createTempFile();
                     try
                     {
-                        wagon.get( resourceName, temp );
+                        wagon.get( url, temp );
                         return Optional.of( Files.readAllBytes( temp.toPath() ) );
                     }
                     finally
@@ -562,20 +535,67 @@ public class WagonRemoteCacheRepository implements RemoteCacheRepository
                 wagons.add( wagon );
             }
         }
+        catch ( ResourceDoesNotExistException e )
+        {
+            return Optional.empty();
+        }
         catch ( Exception e )
         {
-            throw new IOException( "Unable to download resource " + resourceName, e );
+            throw new IOException( "Unable to download resource " + url, e );
         }
     }
 
-    private Wagon lookupWagon() throws Exception
+    private boolean doGet( String url, Path target ) throws IOException
+    {
+        try
+        {
+            Wagon wagon = pollWagon();
+            try
+            {
+                wagon.get( url, target.toFile() );
+                return true;
+            }
+            finally
+            {
+                wagons.add( wagon );
+            }
+        }
+        catch ( ResourceDoesNotExistException e )
+        {
+            return false;
+        }
+        catch ( Exception e )
+        {
+            throw new IOException( "Unable to download resource " + url, e );
+        }
+    }
+
+    private File createTempFile() throws IOException
+    {
+        return File.createTempFile( "maven-caching-", ".temp" );
+    }
+
+    @SuppressWarnings( "ResultOfMethodCallIgnored" )
+    private void delete( File temp )
+    {
+        temp.delete();
+    }
+
+    private Wagon lookupWagon() throws ComponentLookupException
     {
         return wagonProvider.lookup( wagonHint );
     }
 
     private void releaseWagon( Wagon wagon )
     {
-        wagonProvider.release( wagon );
+        try
+        {
+            wagonProvider.release( wagon );
+        }
+        catch ( ComponentLifecycleException e )
+        {
+            // ignore
+        }
     }
 
     private void connectWagon( Wagon wagon )
