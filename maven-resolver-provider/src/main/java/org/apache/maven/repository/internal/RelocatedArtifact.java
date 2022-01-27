@@ -89,38 +89,11 @@ public final class RelocatedArtifact
         }
     }
 
-    // Revise these three methods when MRESOLVER-233 is delivered
     @Override
-    public Artifact setVersion( String version )
+    protected Artifact newInstance( String version, Map<String, String> properties, File file )
     {
-         String current = getVersion();
-         if ( current.equals( version ) || ( version == null && current.length() <= 0 ) )
-         {
-             return this;
-         }
-        return new RelocatedArtifact( artifact, groupId, artifactId, version, message );
-    }
-
-    @Override
-    public Artifact setFile( File file )
-    {
-        File current = getFile();
-        if ( Objects.equals( current, file ) )
-        {
-             return this;
-        }
-        return new RelocatedArtifact( artifact.setFile( file ), groupId, artifactId, version, message );
-    }
-
-    @Override
-    public Artifact setProperties( Map<String, String> properties )
-    {
-        Map<String, String> current = getProperties();
-        if ( current.equals( properties ) || ( properties == null && current.isEmpty() ) )
-        {
-             return this;
-        }
-        return new RelocatedArtifact( artifact.setProperties( properties ), groupId, artifactId, version, message );
+        return new RelocatedArtifact( artifact.setProperties( properties ).setFile( file ),
+                this.groupId, this.artifactId, version, this.message );
     }
 
     public String getClassifier()
@@ -152,4 +125,5 @@ public final class RelocatedArtifact
     {
         return message;
     }
+
 }
