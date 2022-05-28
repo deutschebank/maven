@@ -41,7 +41,7 @@ public class MultilineMessageHelper
     public static List<String> format( String... lines )
     {
         int size = DEFAULT_MAX_SIZE;
-        int rem = size - 4; // 4 chars = 2 box_char + 2 spaces
+        int remainder = size - 4; // 4 chars = 2 box_char + 2 spaces
         List<String> result = new ArrayList<>();
         StringBuilder sb = new StringBuilder( size );
         // first line
@@ -52,12 +52,12 @@ public class MultilineMessageHelper
         for ( String line : lines )
         {
             sb.setLength( 0 );
-            String[] words = line.split( " " );
+            String[] words = line.split( "\\s+" );
             for ( String word : words )
             {
-                if ( sb.length() >= rem - word.length() - ( sb.length() > 0 ? 1 : 0 ) )
+                if ( sb.length() >= remainder - word.length() - ( sb.length() > 0 ? 1 : 0 ) )
                 {
-                    repeat( sb, ' ', rem - sb.length() );
+                    repeat( sb, ' ', remainder - sb.length() );
                     result.add( BOX_CHAR + " " + sb + " " + BOX_CHAR );
                     sb.setLength( 0 );
                 }
@@ -68,7 +68,7 @@ public class MultilineMessageHelper
                 sb.append( word );
             }
 
-            while ( sb.length() < rem )
+            while ( sb.length() < remainder )
             {
                 sb.append( ' ' );
             }
